@@ -1,11 +1,7 @@
-import React from "react";
-
-function Footer() {
+export default function Footer() {
   return (
-    <footer style={{ textAlign: "center", padding: "1rem" }}>
+    <footer className="bg-green-100 text-gray-600 py-4 text-center mt-6">
       <p>© 2025 PlantCare. All rights reserved.</p>
     </footer>
   );
 }
-
-export default Footer; // ✅ thêm dòng này

@@ -1,17 +1,28 @@
+// frontend/src/App.js
 import { Routes, Route, Navigate } from "react-router-dom";
+
+// 🏠 Public pages
 import HomePage from "./pages/Home/HomePage";
 import LoginPage from "./pages/Auth/LoginPage";
 import RegisterPage from "./pages/Auth/RegisterPage";
+
+// 👤 Customer pages
 import CustomerDashboard from "./pages/Customer/CustomerDashboard";
 import MyPlants from "./pages/Customer/MyPlants";
 import OrderHistory from "./pages/Customer/OrderHistory";
+
+// 👷 Staff pages
 import StaffDashboard from "./pages/Staff/StaffDashboard";
 import TaskList from "./pages/Staff/TaskList";
 import VisitDetail from "./pages/Staff/VisitDetail";
+
+// 🧑‍💼 Admin pages
 import AdminDashboard from "./pages/Admin/AdminDashboard";
 import UsersManagement from "./pages/Admin/UsersManagement";
 import ServicesManagement from "./pages/Admin/ServicesManagement";
 import OrdersManagement from "./pages/Admin/OrdersManagement";
+
+// ⚙️ Common components
 import PrivateRoute from "./components/common/PrivateRoute";
 import Header from "./components/common/Header";
 import Footer from "./components/common/Footer";
@@ -23,12 +34,12 @@ export default function App() {
 
       <main className="flex-grow p-4">
         <Routes>
-          {/* Public routes */}
+          {/* 🌿 Public routes */}
           <Route path="/" element={<HomePage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
 
-          {/* Customer routes */}
+          {/* 👤 Customer routes */}
           <Route
             path="/customer/dashboard"
             element={
@@ -54,7 +65,7 @@ export default function App() {
             }
           />
 
-          {/* Staff routes */}
+          {/* 👷 Staff routes */}
           <Route
             path="/staff/dashboard"
             element={
@@ -80,7 +91,7 @@ export default function App() {
             }
           />
 
-          {/* Admin routes */}
+          {/* 🧑‍💼 Admin routes */}
           <Route
             path="/admin/dashboard"
             element={
@@ -114,7 +125,7 @@ export default function App() {
             }
           />
 
-          {/* Fallback */}
+          {/* 🧭 Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

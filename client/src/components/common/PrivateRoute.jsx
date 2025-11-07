@@ -1,9 +1,18 @@
 import React from "react";
-import { Navigate, Outlet } from "react-router-dom";
+import { Navigate } from "react-router-dom";
 
-function PrivateRoute() {
+export default function PrivateRoute({ role, children }) {
   const token = localStorage.getItem("token");
-  return token ? <Outlet /> : <Navigate to="/login" replace />;
-}
+  const user = JSON.parse(localStorage.getItem("user") || "null");
 
-export default PrivateRoute; // ✅ dòng quan trọng
+  if (!token || !user) return <Navigate to="/login" replace />;
+
+  if (role && user.role_id) {
+    const requiredRoleId =
+      role === "admin" ? 1 : role === "staff" ? 2 : role === "customer" ? 3 : null;
+    if (requiredRoleId && user.role_id !== requiredRoleId)
+      return <Navigate to="/" replace />;
+  }
+
+  return children;
+}
