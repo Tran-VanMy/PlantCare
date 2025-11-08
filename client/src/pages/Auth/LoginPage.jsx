@@ -15,9 +15,9 @@ export default function LoginPage() {
       localStorage.setItem("user", JSON.stringify(res.data.user));
 
       const role = res.data.user.role_id;
-      if (role === 1) navigate("/admin/dashboard");
-      else if (role === 2) navigate("/staff/dashboard");
-      else navigate("/customer/dashboard");
+      if (role === 1) navigate("/");
+      else if (role === 2) navigate("/");
+      else navigate("/");
     } catch (err) {
       setError(err.response?.data?.message || "Đăng nhập thất bại.");
     }

@@ -1,69 +1,134 @@
+// server/src/controllers/staff.controller.js
 import pool from "../db.js";
 
 /**
- * Get tasks for staff
- * The staff authenticates with user token; we map user -> staff.id
+ * Lấy danh sách công việc hôm nay
  */
-export const getStaffTasks = async (req, res) => {
+export const getTodayTasks = async (req, res) => {
   try {
-    const userId = req.user.id;
-    // find staff id from user
-    const st = await pool.query("SELECT id FROM staff WHERE user_id=$1", [userId]);
-    if (st.rowCount === 0) return res.status(404).json({ message: "Staff record not found" });
-    const staffId = st.rows[0].id;
+    const staffId = req.user.id;
 
     const q = `
-      SELECT a.id as assignment_id, a.order_id, a.status as assignment_status, a.assigned_at,
-             o.scheduled_date, o.status as order_status, o.address, o.note, o.total_price,
-             u.full_name as customer_name, u.phone as customer_phone,
-             oi.service_id, oi.quantity, oi.price,
-             s.name as service_name
-      FROM assignments a
-      JOIN orders o ON a.order_id = o.id
-      JOIN users u ON o.user_id = u.id
-      JOIN order_items oi ON o.id = oi.order_id
-      JOIN services s ON oi.service_id = s.id
-      WHERE a.staff_id = $1
-      ORDER BY o.scheduled_date DESC
+      SELECT 
+        t.id, 
+        t.title,
+        t.status,
+        o.address,
+        u.full_name AS customer_name
+      FROM tasks t
+      JOIN assignments a ON a.id = t.assignment_id
+      JOIN orders o ON o.id = a.order_id
+      JOIN users u ON u.id = o.user_id
+      WHERE a.staff_id = $1 
+        AND DATE(o.scheduled_date) = CURRENT_DATE
     `;
     const result = await pool.query(q, [staffId]);
+
     res.json(result.rows);
   } catch (err) {
-    console.error("getStaffTasks error:", err);
+    console.error("getTodayTasks error:", err);
     res.status(500).json({ error: err.message });
   }
 };
 
 /**
- * Update a task / order status (staff)
- * body: { order_id, status }
+ * Lấy tất cả công việc của nhân viên
  */
-export const updateTaskStatus = async (req, res) => {
-  const { order_id, status } = req.body;
-  if (!order_id || !status) return res.status(400).json({ message: "order_id and status required" });
-
+export const getAllTasks = async (req, res) => {
   try {
-    // verify that current user is assigned to this order
-    const userId = req.user.id;
-    const st = await pool.query("SELECT id FROM staff WHERE user_id=$1", [userId]);
-    if (st.rowCount === 0) return res.status(404).json({ message: "Staff record not found" });
-    const staffId = st.rows[0].id;
+    const staffId = req.user.id;
 
-    const aRes = await pool.query("SELECT * FROM assignments WHERE order_id=$1 AND staff_id=$2", [order_id, staffId]);
-    if (aRes.rowCount === 0) return res.status(403).json({ message: "Not assigned to this order" });
+    const q = `
+      SELECT 
+        t.id, 
+        t.title,
+        t.status,
+        u.full_name AS customer_name
+      FROM tasks t
+      JOIN assignments a ON a.id = t.assignment_id
+      JOIN orders o ON o.id = a.order_id
+      JOIN users u ON u.id = o.user_id
+      WHERE a.staff_id = $1
+      ORDER BY t.id DESC
+    `;
+    const result = await pool.query(q, [staffId]);
 
-    await pool.query(`UPDATE orders SET status=$1, updated_at=NOW() WHERE id=$2`, [status, order_id]);
-    // optionally update assignment.status too
-    if (status === "completed" || status === "done") {
-      // mark assignment done
-      await pool.query(`UPDATE assignments SET status='done' WHERE order_id=$1 AND staff_id=$2`, [order_id, staffId]);
-    } else if (status === "in_progress") {
-      await pool.query(`UPDATE assignments SET status='in_progress' WHERE order_id=$1 AND staff_id=$2`, [order_id, staffId]);
-    }
-
-    res.json({ message: "Task status updated" });
+    res.json(result.rows);
   } catch (err) {
-    console.error("updateTaskStatus error:", err);
+    console.error("getAllTasks error:", err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+/**
+ * Chi tiết công việc
+ */
+export const getTaskDetail = async (req, res) => {
+  try {
+    const taskId = req.params.id;
+
+    const q = `
+      SELECT 
+        t.id,
+        t.title,
+        t.description,
+        t.status,
+        o.address,
+        o.scheduled_date,
+        u.full_name AS customer_name,
+        STRING_AGG(s.name, ', ') AS services
+      FROM tasks t
+      JOIN assignments a ON t.assignment_id = a.id
+      JOIN orders o ON a.order_id = o.id
+      JOIN users u ON u.id = o.user_id
+      LEFT JOIN order_items oi ON oi.order_id = o.id
+      LEFT JOIN services s ON s.id = oi.service_id
+      WHERE t.id = $1
+      GROUP BY t.id, o.address, o.scheduled_date, u.full_name
+    `;
+    const result = await pool.query(q, [taskId]);
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error("getTaskDetail error:", err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+/**
+ * Staff bắt đầu công việc
+ */
+export const startTask = async (req, res) => {
+  try {
+    const taskId = req.params.id;
+
+    await pool.query(
+      "UPDATE tasks SET status='in_progress' WHERE id=$1",
+      [taskId]
+    );
+
+    res.json({ message: "Task started" });
+  } catch (err) {
+    console.error("startTask error:", err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+/**
+ * Staff hoàn thành công việc
+ */
+export const completeTask = async (req, res) => {
+  try {
+    const taskId = req.params.id;
+
+    await pool.query(
+      "UPDATE tasks SET status='completed', completed_at=NOW() WHERE id=$1",
+      [taskId]
+    );
+
+    res.json({ message: "Task completed" });
+  } catch (err) {
+    console.error("completeTask error:", err);
     res.status(500).json({ error: err.message });
   }
 };
