@@ -1,16 +1,25 @@
-// backend/src/controllers/auth.controller.js
+// ===============================
+//  AUTH CONTROLLER (ESM VERSION)
+// ===============================
+// Chức năng:
+//  - register: đăng ký user mới (hash password, lưu DB)
+//    → Nếu role_id == 2 (staff) thì thêm record tương ứng vào bảng staff
+//  - login: đăng nhập, tạo JWT
+//  - me: lấy thông tin người dùng hiện tại (cần middleware xác thực)
+// -------------------------------
+
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import pool from "../db.js";
+import pool from "../db.js"; // PostgreSQL pool
 
 const JWT_SECRET = process.env.JWT_SECRET || "supersecretkey";
 const JWT_EXPIRES_IN = "7d";
 
-// =============================
+// ===============================
 //  REGISTER
-// =============================
+// ===============================
 export const register = async (req, res) => {
-  const { full_name, email, password, role, role_id } = req.body;
+  const { full_name, email, password, phone, address, role, role_id } = req.body;
 
   try {
     if (!full_name || !email || !password) {
@@ -25,13 +34,8 @@ export const register = async (req, res) => {
 
     const hash = await bcrypt.hash(password, 10);
 
-    // =============================
-    // FIX ROLE — CHÍNH XÁC 100%
-    // =============================
-    // Ưu tiên role_id (frontend gửi dạng số)
-    // Nếu không có thì map role dạng text
-    let finalRole = 3;
-
+    // Xác định role cuối cùng
+    let finalRole = 3; // mặc định là customer
     if (role_id) {
       finalRole = Number(role_id);
     } else if (role === "admin") {
@@ -40,17 +44,29 @@ export const register = async (req, res) => {
       finalRole = 2;
     }
 
-    // Insert user
+    // Thêm user
     const result = await pool.query(
-      `INSERT INTO users (full_name, email, password_hash, role_id, created_at)
-       VALUES ($1,$2,$3,$4,NOW())
+      `INSERT INTO users (full_name, email, password_hash, phone, address, role_id, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,NOW())
        RETURNING id, full_name, email, role_id`,
-      [full_name, email, hash, finalRole]
+      [full_name, email, hash, phone || null, address || null, finalRole]
     );
 
     const user = result.rows[0];
 
-    // JWT
+    // Nếu là nhân viên → thêm record vào bảng staff (nếu chưa tồn tại)
+    if (finalRole === 2) {
+      const staffCheck = await pool.query("SELECT * FROM staff WHERE user_id = $1", [user.id]);
+      if (staffCheck.rowCount === 0) {
+        await pool.query(
+          `INSERT INTO staff (user_id, specialization, availability, rating)
+           VALUES ($1, $2, $3, $4)`,
+          [user.id, null, true, 5.0]
+        );
+      }
+    }
+
+    // Tạo JWT token
     const token = jwt.sign(
       { id: user.id, role: user.role_id },
       JWT_SECRET,
@@ -62,15 +78,15 @@ export const register = async (req, res) => {
       token,
       user,
     });
-
   } catch (err) {
+    console.error("❌ Lỗi register:", err);
     return res.status(500).json({ message: err.message });
   }
 };
 
-// =============================
+// ===============================
 //  LOGIN
-// =============================
+// ===============================
 export const login = async (req, res) => {
   const { email, password } = req.body;
 
@@ -101,15 +117,15 @@ export const login = async (req, res) => {
       token,
       user,
     });
-
   } catch (err) {
+    console.error("❌ Lỗi login:", err);
     return res.status(500).json({ message: err.message });
   }
 };
 
-// =============================
+// ===============================
 //  GET CURRENT USER
-// =============================
+// ===============================
 export const me = async (req, res) => {
   try {
     const result = await pool.query(
@@ -120,8 +136,8 @@ export const me = async (req, res) => {
     );
 
     return res.json(result.rows[0]);
-
   } catch (err) {
+    console.error("❌ Lỗi lấy thông tin user:", err);
     return res.status(500).json({ message: err.message });
   }
 };
