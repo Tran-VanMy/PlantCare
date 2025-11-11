@@ -1,3 +1,4 @@
+// client/src/pages/Auth/RegisterPage.jsx
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import api from "../../api/api";
@@ -9,10 +10,13 @@ export default function RegisterPage() {
     email: "",
     password: "",
     role_id: 3, // mặc định customer
+    phone: "",
+    address: ""
   });
   const [error, setError] = useState("");
 
-  const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
+  const handleChange = (e) =>
+    setForm({ ...form, [e.target.name]: e.target.value });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -29,14 +33,54 @@ export default function RegisterPage() {
       <div className="bg-white p-8 rounded-lg shadow-lg w-full max-w-md">
         <h2 className="text-2xl font-bold text-center mb-6">Tạo tài khoản</h2>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <input name="full_name" placeholder="Họ tên" className="border p-2 rounded"
-            onChange={handleChange} required />
-          <input name="email" type="email" placeholder="Email" className="border p-2 rounded"
-            onChange={handleChange} required />
-          <input name="password" type="password" placeholder="Mật khẩu"
-            className="border p-2 rounded" onChange={handleChange} required />
-          <select name="role_id" className="border p-2 rounded" value={form.role_id}
-            onChange={handleChange}>
+          <input
+            name="full_name"
+            placeholder="Họ tên"
+            className="border p-2 rounded"
+            onChange={handleChange}
+            required
+          />
+          <input
+            name="email"
+            type="email"
+            placeholder="Email"
+            className="border p-2 rounded"
+            onChange={handleChange}
+            required
+          />
+          <input
+            name="password"
+            type="password"
+            placeholder="Mật khẩu"
+            className="border p-2 rounded"
+            onChange={handleChange}
+            required
+          />
+
+          <input
+            name="phone"
+            type="text"
+            placeholder="Số điện thoại"
+            className="border p-2 rounded"
+            value={form.phone}
+            onChange={handleChange}
+          />
+
+          <input
+            name="address"
+            type="text"
+            placeholder="Địa chỉ"
+            className="border p-2 rounded"
+            value={form.address}
+            onChange={handleChange}
+          />
+
+          <select
+            name="role_id"
+            className="border p-2 rounded"
+            value={form.role_id}
+            onChange={handleChange}
+          >
             <option value={3}>Khách hàng</option>
             <option value={2}>Nhân viên</option>
             <option value={1}>Quản trị viên</option>

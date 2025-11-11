@@ -1,3 +1,4 @@
+// server/src/app.js
 import express from "express";
 import cors from "cors";
 import morgan from "morgan";
@@ -11,6 +12,7 @@ import adminRoutes from "./routes/admin.routes.js";
 import assignmentRoutes from "./routes/assignment.routes.js";
 import notificationRoutes from "./routes/notification.routes.js";
 import paymentRoutes from "./routes/payment.routes.js";
+import plantsRoutes from "./routes/plants.routes.js"; // <-- new
 
 const app = express();
 app.use(cors());
@@ -32,6 +34,9 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/assignments", assignmentRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/payments", paymentRoutes);
+
+// plants & customer-related
+app.use("/api", plantsRoutes);
 
 // ✅ 404 Handler
 app.use((req, res, next) => {

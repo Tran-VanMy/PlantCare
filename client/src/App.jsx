@@ -1,4 +1,4 @@
-// frontend/src/App.js
+// client/src/App.jsx
 import { Routes, Route, Navigate } from "react-router-dom";
 
 // 🏠 Public pages
@@ -21,6 +21,7 @@ import AdminDashboard from "./pages/Admin/AdminDashboard";
 import UsersManagement from "./pages/Admin/UsersManagement";
 import ServicesManagement from "./pages/Admin/ServicesManagement";
 import OrdersManagement from "./pages/Admin/OrdersManagement";
+import Reports from "./pages/Admin/Reports"; // <-- new
 
 // ⚙️ Common components
 import PrivateRoute from "./components/common/PrivateRoute";
@@ -121,6 +122,14 @@ export default function App() {
             element={
               <PrivateRoute role="admin">
                 <OrdersManagement />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/admin/reports"
+            element={
+              <PrivateRoute role="admin">
+                <Reports />
               </PrivateRoute>
             }
           />

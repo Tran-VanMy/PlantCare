@@ -1,9 +1,13 @@
+// server/src/controllers/orders.controller.js
 import pool from "../db.js";
 
 /**
  * Create order
  * - uses req.user.id as order owner (do NOT accept user_id from client)
  * - body: { services: [{ service_id, quantity, price }], scheduled_date, address, note }
+ *
+ * After creating order we also create a payment record with payment_status='paid'
+ * so that every order is considered successful (per requirement).
  */
 export const createOrder = async (req, res) => {
   const userId = req.user?.id;
@@ -41,10 +45,17 @@ export const createOrder = async (req, res) => {
       );
     }
 
-    await client.query(`UPDATE orders SET total_price=$1 WHERE id=$2`, [total, orderId]);
+    await client.query(`UPDATE orders SET total_price=$1, status='confirmed' WHERE id=$2`, [total, orderId]);
+
+    // create a payment and mark as paid (always successful)
+    await client.query(
+      `INSERT INTO payments (order_id, amount, payment_method, payment_status, transaction_id, created_at)
+       VALUES ($1, $2, $3, 'paid', $4, NOW())`,
+      [orderId, total, 'cash', null]
+    );
 
     await client.query("COMMIT");
-    res.status(201).json({ message: "Order created", order_id: orderId });
+    res.status(201).json({ message: "Order created and payment confirmed", order_id: orderId });
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});
     console.error("createOrder error:", err);
