@@ -6,7 +6,7 @@ import morgan from "morgan";
 import authRoutes from "./routes/auth.routes.js";
 import userRoutes from "./routes/user.routes.js";
 import serviceRoutes from "./routes/service.routes.js";
-import orderRoutes from "./routes/order.routes.js";
+import orderRoutes from "./routes/order.routes.js"; // <- order routes
 import staffRoutes from "./routes/staff.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import assignmentRoutes from "./routes/assignment.routes.js";
@@ -28,7 +28,8 @@ app.get("/", (req, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/services", serviceRoutes);
-app.use("/api/orders", orderRoutes);
+app.use("/api/orders", orderRoutes);    // keep mounted at /api/orders
+app.use("/api", orderRoutes);           // ALSO mount at /api to support /api/customers/:id/orders
 app.use("/api/staff", staffRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/assignments", assignmentRoutes);

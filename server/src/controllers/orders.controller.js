@@ -64,3 +64,47 @@ export const createOrder = async (req, res) => {
     client.release();
   }
 };
+
+
+export const getCustomerOrders = async (req, res) => {
+  try {
+    const customerId = Number(req.params.id);
+    const requester = req.user;
+
+    // nếu requester không phải admin và không phải chủ sở hữu -> forbidden
+    if (requester.role !== 1 && requester.id !== customerId) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    const q = `
+      SELECT
+        o.id,
+        o.total_price AS total,
+        o.status,
+        o.scheduled_date AS date,
+        TO_CHAR(o.scheduled_date, 'YYYY-MM-DD"T"HH24:MI:SS') AS date_str,
+        STRING_AGG(s.name, ', ') AS service_name
+      FROM orders o
+      LEFT JOIN order_items oi ON oi.order_id = o.id
+      LEFT JOIN services s ON s.id = oi.service_id
+      WHERE o.user_id = $1
+      GROUP BY o.id, o.total_price, o.status, o.scheduled_date
+      ORDER BY o.scheduled_date DESC
+      LIMIT 1000
+    `;
+    const r = await pool.query(q, [customerId]);
+
+    const rows = r.rows.map((r) => ({
+      id: r.id,
+      service: r.service_name,
+      total: Number(r.total) || 0,
+      date: r.date_str || r.date,
+      status: r.status,
+    }));
+
+    res.json(rows);
+  } catch (err) {
+    console.error("getCustomerOrders error:", err);
+    res.status(500).json({ error: err.message });
+  }
+};

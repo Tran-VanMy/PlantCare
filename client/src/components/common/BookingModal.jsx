@@ -7,7 +7,7 @@ export default function BookingModal({ isOpen, onClose, services: initialService
   const navigate = useNavigate();
   const [services, setServices] = useState(initialServices || []);
   const [selected, setSelected] = useState(() => (singleService ? [{ ...singleService, qty: 1 }] : []));
-  const [form, setForm] = useState({ name: "", phone: "", date: "" });
+  const [form, setForm] = useState({ name: "", phone: "", date: "", address: "" });
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -53,8 +53,8 @@ export default function BookingModal({ isOpen, onClose, services: initialService
       return;
     }
 
-    if (!form.name || !form.phone || !form.date) {
-      alert("Vui lòng điền tên, số điện thoại và ngày.");
+    if (!form.name || !form.phone || !form.date || !form.address) {
+      alert("Vui lòng điền tên, số điện thoại, ngày và địa chỉ.");
       return;
     }
 
@@ -70,7 +70,7 @@ export default function BookingModal({ isOpen, onClose, services: initialService
       await api.post("/orders", {
         services: payloadServices,
         scheduled_date: form.date,
-        address: form.name + " - " + form.phone,
+        address: form.address,
         note: "Đặt qua web - " + (singleService ? `service:${singleService.name}` : "multiple")
       });
 
@@ -134,6 +134,7 @@ export default function BookingModal({ isOpen, onClose, services: initialService
             <h4 className="font-semibold">Thông tin khách hàng</h4>
             <input name="name" placeholder="Họ tên" className="border p-2 rounded w-full" value={form.name} onChange={handleChange} required />
             <input name="phone" placeholder="Số điện thoại" className="border p-2 rounded w-full" value={form.phone} onChange={handleChange} required />
+            <input name="address" placeholder="Địa chỉ" className="border p-2 rounded w-full" value={form.address} onChange={handleChange} required />
             <label className="block">
               <div className="text-sm mb-1">Chọn ngày</div>
               <input name="date" type="datetime-local" className="border p-2 rounded w-full" value={form.date} onChange={handleChange} required />

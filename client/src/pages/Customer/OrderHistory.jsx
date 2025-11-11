@@ -113,6 +113,71 @@
 
 
 
+// import { useEffect, useState } from "react";
+// import api from "../../api/api";
+
+// export default function OrderHistory() {
+//   const [orders, setOrders] = useState([]);
+//   const [loading, setLoading] = useState(true);
+
+//   useEffect(() => {
+//     const storedUser = JSON.parse(localStorage.getItem("user"));
+//     if (!storedUser) return;
+
+//     const fetchOrders = async () => {
+//       try {
+//         const res = await api.get(`/customers/${storedUser.id}/orders`);
+//         // Sắp xếp từ mới nhất
+//         setOrders(res.data.sort((a, b) => new Date(b.date) - new Date(a.date)));
+//       } catch (err) {
+//         console.error("Lỗi khi lấy lịch sử đơn hàng:", err);
+//       } finally {
+//         setLoading(false);
+//       }
+//     };
+
+//     fetchOrders();
+//   }, []);
+
+//   if (loading) return <p>Đang tải đơn hàng...</p>;
+//   if (orders.length === 0) return <p>Bạn chưa có đơn hàng nào.</p>;
+
+//   return (
+//     <div className="min-h-screen bg-green-50 p-6">
+//       <h1 className="text-2xl font-bold text-green-700 mb-6">🧾 Lịch sử đơn hàng</h1>
+//       <table className="min-w-full bg-white rounded-lg shadow">
+//         <thead>
+//           <tr className="bg-green-100">
+//             <th className="p-3 text-left">Mã đơn</th>
+//             <th className="p-3 text-left">Dịch vụ</th>
+//             <th className="p-3 text-left">Tổng ($)</th>
+//             <th className="p-3 text-left">Ngày hẹn</th>
+//             <th className="p-3 text-left">Trạng thái</th>
+//           </tr>
+//         </thead>
+//         <tbody>
+//           {orders.map((order) => (
+//             <tr key={order.id} className="border-b hover:bg-green-50">
+//               <td className="p-3">{order.id}</td>
+//               <td className="p-3">{order.service}</td>
+//               <td className="p-3">{order.total.toFixed(2)}</td>
+//               <td className="p-3">{new Date(order.date).toLocaleDateString()}</td>
+//               <td className="p-3 text-green-700">{order.status}</td>
+//             </tr>
+//           ))}
+//         </tbody>
+//       </table>
+//     </div>
+//   );
+// }
+
+
+
+
+
+
+
+// client/src/pages/Customer/OrderHistory.jsx
 import { useEffect, useState } from "react";
 import api from "../../api/api";
 
@@ -122,15 +187,19 @@ export default function OrderHistory() {
 
   useEffect(() => {
     const storedUser = JSON.parse(localStorage.getItem("user"));
-    if (!storedUser) return;
+    if (!storedUser) {
+      setLoading(false);
+      return;
+    }
 
     const fetchOrders = async () => {
       try {
+        // backend route expects: GET /api/customers/:id/orders
         const res = await api.get(`/customers/${storedUser.id}/orders`);
-        // Sắp xếp từ mới nhất
-        setOrders(res.data.sort((a, b) => new Date(b.date) - new Date(a.date)));
+        setOrders(Array.isArray(res.data) ? res.data : []);
       } catch (err) {
         console.error("Lỗi khi lấy lịch sử đơn hàng:", err);
+        setOrders([]);
       } finally {
         setLoading(false);
       }
@@ -160,8 +229,8 @@ export default function OrderHistory() {
             <tr key={order.id} className="border-b hover:bg-green-50">
               <td className="p-3">{order.id}</td>
               <td className="p-3">{order.service}</td>
-              <td className="p-3">{order.total.toFixed(2)}</td>
-              <td className="p-3">{new Date(order.date).toLocaleDateString()}</td>
+              <td className="p-3">{Number(order.total).toFixed(2)}</td>
+              <td className="p-3">{new Date(order.date).toLocaleString()}</td>
               <td className="p-3 text-green-700">{order.status}</td>
             </tr>
           ))}
