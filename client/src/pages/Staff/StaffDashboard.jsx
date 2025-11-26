@@ -157,75 +157,199 @@
 
 
 
-// client/src/pages/Staff/StaffDashboard.jsx
+// // client/src/pages/Staff/StaffDashboard.jsx
+// import { useEffect, useState } from "react";
+// import { Link } from "react-router-dom";
+// import api from "../../api/api";
+
+// export default function StaffDashboard() {
+//   const [tasks, setTasks] = useState([]);
+
+//   useEffect(() => {
+//     api.get("/staff/tasks/today")
+//       .then(res => setTasks(res.data || []))
+//       .catch(err => console.error(err));
+//   }, []);
+
+//   return (
+//     <div className="min-h-screen bg-green-50 p-6">
+//       <header className="flex justify-between items-center mb-8">
+//         <h1 className="text-2xl font-bold text-green-700">Bảng điều khiển nhân viên</h1>
+//       </header>
+
+//       <section className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+//         <Stat label="Công việc hôm nay" value={tasks.length} />
+//         <Stat label="Đang làm" value={tasks.filter(t => t.status === "in_progress").length} />
+//         <Stat label="Hoàn thành" value={tasks.filter(t => t.status === "completed").length} />
+//         <Stat label="Chờ xử lý" value={tasks.filter(t => t.status === "pending").length} />
+//       </section>
+
+//       <table className="min-w-full bg-white rounded-lg shadow">
+//         <thead>
+//           <tr className="bg-green-100 text-left">
+//             <th className="p-3">Mã</th>
+//             <th className="p-3">Khách hàng</th>
+//             <th className="p-3">Địa chỉ</th>
+//             <th className="p-3">SĐT</th>
+//             <th className="p-3">Trạng thái</th>
+//             <th className="p-3 text-center">Hành động</th>
+//           </tr>
+//         </thead>
+//         <tbody>
+//           {tasks.map((t) => (
+//             <tr key={t.id} className="border-b hover:bg-green-50">
+//               <td className="p-3">{t.id}</td>
+//               <td className="p-3">{t.customer_name}</td>
+//               <td className="p-3">{t.address}</td>
+//               <td className="p-3">{t.customer_phone || "—"}</td>
+//               <td className="p-3">{t.status}</td>
+//               <td className="p-3 text-center">
+//                 <Link className="text-green-600 hover:underline" to={`/staff/visit/${t.id}`}>
+//                   Xem chi tiết
+//                 </Link>
+//               </td>
+//             </tr>
+//           ))}
+//           {tasks.length === 0 && (
+//             <tr>
+//               <td colSpan={6} className="p-4 text-center text-gray-500">Không có công việc hôm nay</td>
+//             </tr>
+//           )}
+//         </tbody>
+//       </table>
+//     </div>
+//   );
+// }
+
+// function Stat({ label, value }) {
+//   return (
+//     <div className="bg-white p-4 rounded-lg shadow text-center">
+//       <p className="text-sm text-gray-500">{label}</p>
+//       <p className="text-2xl font-bold text-green-700">{value}</p>
+//     </div>
+//   );
+// }
+
+
+
+
+
+
+
+
+
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import api from "../../api/api";
+import { Link } from "react-router-dom";
 
 export default function StaffDashboard() {
+  const [available, setAvailable] = useState([]);
   const [tasks, setTasks] = useState([]);
+  const [stats, setStats] = useState(null);
 
-  useEffect(() => {
-    api.get("/staff/tasks/today")
-      .then(res => setTasks(res.data || []))
-      .catch(err => console.error(err));
-  }, []);
+  const load = async () => {
+    const av = await api.get("/staff/orders/available");
+    setAvailable(av.data || []);
+
+    const tk = await api.get("/staff/tasks");
+    setTasks(tk.data || []);
+
+    const st = await api.get("/staff/stats/income");
+    setStats(st.data);
+  };
+
+  useEffect(() => { load().catch(console.error); }, []);
+
+  const accept = async (id) => {
+    await api.put(`/staff/orders/${id}/accept`);
+    load();
+  };
 
   return (
-    <div className="min-h-screen bg-green-50 p-6">
-      <header className="flex justify-between items-center mb-8">
-        <h1 className="text-2xl font-bold text-green-700">Bảng điều khiển nhân viên</h1>
-      </header>
+    <div className="min-h-screen bg-green-50 p-6 space-y-8">
+      <h1 className="text-2xl font-bold text-green-700">Bảng điều khiển nhân viên</h1>
 
-      <section className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <Stat label="Công việc hôm nay" value={tasks.length} />
-        <Stat label="Đang làm" value={tasks.filter(t => t.status === "in_progress").length} />
-        <Stat label="Hoàn thành" value={tasks.filter(t => t.status === "completed").length} />
-        <Stat label="Chờ xử lý" value={tasks.filter(t => t.status === "pending").length} />
+      {/* Stats + bonus */}
+      {stats && (
+        <div className="bg-white p-4 rounded-xl shadow">
+          <h2 className="font-semibold mb-2">Thu nhập & Thưởng</h2>
+          <div className="text-sm text-gray-600 mb-2">Thưởng mốc chẵn 2,4,6,8,10... sau mỗi đơn hoàn tất.</div>
+          <ul className="text-sm list-disc pl-5">
+            {stats.bonuses?.map((b) => (
+              <li key={b.order_id}>
+                Đơn #{b.order_id}: thưởng mốc {b.milestone} = ${b.bonus_amount}
+              </li>
+            ))}
+            {(!stats.bonuses || stats.bonuses.length === 0) && <li>Chưa có thưởng.</li>}
+          </ul>
+        </div>
+      )}
+
+      {/* Available orders */}
+      <section className="bg-white p-4 rounded-xl shadow">
+        <h2 className="text-lg font-semibold mb-3">Đơn chờ nhận</h2>
+        {available.length === 0 ? (
+          <p className="text-gray-500">Không có đơn mới.</p>
+        ) : (
+          <table className="min-w-full">
+            <thead>
+              <tr className="bg-green-100 text-left">
+                <th className="p-2">Mã đơn</th>
+                <th className="p-2">Khách</th>
+                <th className="p-2">Dịch vụ</th>
+                <th className="p-2">Cây</th>
+                <th className="p-2">Ngày hẹn</th>
+                <th className="p-2">Địa chỉ</th>
+                <th className="p-2">SĐT</th>
+                <th className="p-2">Tổng</th>
+                <th className="p-2">Hành động</th>
+              </tr>
+            </thead>
+            <tbody>
+              {available.map((o) => (
+                <tr key={o.id} className="border-b hover:bg-green-50">
+                  <td className="p-2">{o.id}</td>
+                  <td className="p-2">{o.customer_name}</td>
+                  <td className="p-2">{o.services}</td>
+                  <td className="p-2">{o.plant_name || "—"}</td>
+                  <td className="p-2">{new Date(o.scheduled_date).toLocaleString()}</td>
+                  <td className="p-2">{o.address}</td>
+                  <td className="p-2">{o.customer_phone || "—"}</td>
+                  <td className="p-2">${o.total_price}</td>
+                  <td className="p-2">
+                    <button onClick={() => accept(o.id)} className="px-3 py-1 bg-green-600 text-white rounded">
+                      Nhận đơn
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </section>
 
-      <table className="min-w-full bg-white rounded-lg shadow">
-        <thead>
-          <tr className="bg-green-100 text-left">
-            <th className="p-3">Mã</th>
-            <th className="p-3">Khách hàng</th>
-            <th className="p-3">Địa chỉ</th>
-            <th className="p-3">SĐT</th>
-            <th className="p-3">Trạng thái</th>
-            <th className="p-3 text-center">Hành động</th>
-          </tr>
-        </thead>
-        <tbody>
-          {tasks.map((t) => (
-            <tr key={t.id} className="border-b hover:bg-green-50">
-              <td className="p-3">{t.id}</td>
-              <td className="p-3">{t.customer_name}</td>
-              <td className="p-3">{t.address}</td>
-              <td className="p-3">{t.customer_phone || "—"}</td>
-              <td className="p-3">{t.status}</td>
-              <td className="p-3 text-center">
-                <Link className="text-green-600 hover:underline" to={`/staff/visit/${t.id}`}>
-                  Xem chi tiết
+      {/* My tasks */}
+      <section className="bg-white p-4 rounded-xl shadow">
+        <h2 className="text-lg font-semibold mb-3">Đơn của tôi</h2>
+        {tasks.length === 0 ? (
+          <p className="text-gray-500">Chưa có đơn nào.</p>
+        ) : (
+          <div className="grid gap-3">
+            {tasks.map((t) => (
+              <div key={t.id} className="border rounded-lg p-3 flex justify-between items-center">
+                <div>
+                  <div className="font-semibold">Đơn #{t.id} — {t.services}</div>
+                  <div className="text-sm text-gray-600">{t.customer_name} • {t.address}</div>
+                  <div className="text-sm text-green-700">{t.status_vn}</div>
+                </div>
+                <Link to={`/staff/visit/${t.id}`} className="px-3 py-1 bg-blue-600 text-white rounded">
+                  Chi tiết
                 </Link>
-              </td>
-            </tr>
-          ))}
-          {tasks.length === 0 && (
-            <tr>
-              <td colSpan={6} className="p-4 text-center text-gray-500">Không có công việc hôm nay</td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function Stat({ label, value }) {
-  return (
-    <div className="bg-white p-4 rounded-lg shadow text-center">
-      <p className="text-sm text-gray-500">{label}</p>
-      <p className="text-2xl font-bold text-green-700">{value}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

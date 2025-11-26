@@ -177,13 +177,91 @@
 
 
 
-// client/src/pages/Customer/OrderHistory.jsx
+// // client/src/pages/Customer/OrderHistory.jsx
+// import { useEffect, useState } from "react";
+// import api from "../../api/api";
+
+// export default function OrderHistory() {
+//   const [orders, setOrders] = useState([]);
+//   const [loading, setLoading] = useState(true);
+
+//   useEffect(() => {
+//     const storedUser = JSON.parse(localStorage.getItem("user"));
+//     if (!storedUser) {
+//       setLoading(false);
+//       return;
+//     }
+
+//     const fetchOrders = async () => {
+//       try {
+//         // backend route expects: GET /api/customers/:id/orders
+//         const res = await api.get(`/customers/${storedUser.id}/orders`);
+//         setOrders(Array.isArray(res.data) ? res.data : []);
+//       } catch (err) {
+//         console.error("Lỗi khi lấy lịch sử đơn hàng:", err);
+//         setOrders([]);
+//       } finally {
+//         setLoading(false);
+//       }
+//     };
+
+//     fetchOrders();
+//   }, []);
+
+//   if (loading) return <p>Đang tải đơn hàng...</p>;
+//   if (orders.length === 0) return <p>Bạn chưa có đơn hàng nào.</p>;
+
+//   return (
+//     <div className="min-h-screen bg-green-50 p-6">
+//       <h1 className="text-2xl font-bold text-green-700 mb-6">🧾 Lịch sử đơn hàng</h1>
+//       <table className="min-w-full bg-white rounded-lg shadow">
+//         <thead>
+//           <tr className="bg-green-100">
+//             <th className="p-3 text-left">Mã đơn</th>
+//             <th className="p-3 text-left">Dịch vụ</th>
+//             <th className="p-3 text-left">Tổng ($)</th>
+//             <th className="p-3 text-left">Ngày hẹn</th>
+//             <th className="p-3 text-left">Trạng thái</th>
+//           </tr>
+//         </thead>
+//         <tbody>
+//           {orders.map((order) => (
+//             <tr key={order.id} className="border-b hover:bg-green-50">
+//               <td className="p-3">{order.id}</td>
+//               <td className="p-3">{order.service}</td>
+//               <td className="p-3">{Number(order.total).toFixed(2)}</td>
+//               <td className="p-3">{new Date(order.date).toLocaleString()}</td>
+//               <td className="p-3 text-green-700">{order.status}</td>
+//             </tr>
+//           ))}
+//         </tbody>
+//       </table>
+//     </div>
+//   );
+// }
+
+
+
+
+
+
+
+
+
+
+
+
 import { useEffect, useState } from "react";
 import api from "../../api/api";
 
 export default function OrderHistory() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  const fetchOrders = async (uid) => {
+    const res = await api.get(`/customers/${uid}/orders`);
+    setOrders(Array.isArray(res.data) ? res.data : []);
+  };
 
   useEffect(() => {
     const storedUser = JSON.parse(localStorage.getItem("user"));
@@ -192,21 +270,17 @@ export default function OrderHistory() {
       return;
     }
 
-    const fetchOrders = async () => {
-      try {
-        // backend route expects: GET /api/customers/:id/orders
-        const res = await api.get(`/customers/${storedUser.id}/orders`);
-        setOrders(Array.isArray(res.data) ? res.data : []);
-      } catch (err) {
-        console.error("Lỗi khi lấy lịch sử đơn hàng:", err);
-        setOrders([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchOrders();
+    fetchOrders(storedUser.id)
+      .catch((err) => console.error(err))
+      .finally(() => setLoading(false));
   }, []);
+
+  const cancelOrder = async (id) => {
+    if (!confirm("Bạn chắc chắn muốn hủy đơn này?")) return;
+    await api.put(`/orders/${id}/cancel`);
+    const storedUser = JSON.parse(localStorage.getItem("user"));
+    fetchOrders(storedUser.id);
+  };
 
   if (loading) return <p>Đang tải đơn hàng...</p>;
   if (orders.length === 0) return <p>Bạn chưa có đơn hàng nào.</p>;
@@ -219,19 +293,33 @@ export default function OrderHistory() {
           <tr className="bg-green-100">
             <th className="p-3 text-left">Mã đơn</th>
             <th className="p-3 text-left">Dịch vụ</th>
-            <th className="p-3 text-left">Tổng ($)</th>
+            <th className="p-3 text-left">Cây</th>
             <th className="p-3 text-left">Ngày hẹn</th>
+            <th className="p-3 text-left">Địa chỉ</th>
+            <th className="p-3 text-left">Tổng ($)</th>
             <th className="p-3 text-left">Trạng thái</th>
+            <th className="p-3 text-center">Hủy đơn</th>
           </tr>
         </thead>
         <tbody>
-          {orders.map((order) => (
-            <tr key={order.id} className="border-b hover:bg-green-50">
-              <td className="p-3">{order.id}</td>
-              <td className="p-3">{order.service}</td>
-              <td className="p-3">{Number(order.total).toFixed(2)}</td>
-              <td className="p-3">{new Date(order.date).toLocaleString()}</td>
-              <td className="p-3 text-green-700">{order.status}</td>
+          {orders.map((o) => (
+            <tr key={o.id} className="border-b hover:bg-green-50">
+              <td className="p-3">{o.id}</td>
+              <td className="p-3">{o.service}</td>
+              <td className="p-3">{o.plant}</td>
+              <td className="p-3">{new Date(o.date).toLocaleString()}</td>
+              <td className="p-3">{o.address}</td>
+              <td className="p-3">{Number(o.total).toFixed(2)}</td>
+              <td className="p-3 text-green-700">{o.status}</td>
+              <td className="p-3 text-center">
+                {o.status === "Chờ xác nhận" ? (
+                  <button onClick={() => cancelOrder(o.id)} className="px-3 py-1 bg-red-600 text-white rounded">
+                    Hủy
+                  </button>
+                ) : (
+                  "—"
+                )}
+              </td>
             </tr>
           ))}
         </tbody>

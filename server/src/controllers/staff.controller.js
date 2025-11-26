@@ -1,186 +1,352 @@
 // server/src/controllers/staff.controller.js
 import pool from "../db.js";
+import { STATUS, nextStatusForStaffAction } from "../utils/orderStatus.js";
 
-/**
- * Helper: lấy staff.id từ user id (req.user.id)
- * Nếu không có record staff -> trả null
- */
 const getStaffIdByUser = async (userId) => {
-  const r = await pool.query("SELECT id FROM staff WHERE user_id = $1 LIMIT 1", [userId]);
+  const r = await pool.query("SELECT id FROM staff WHERE user_id=$1 LIMIT 1", [userId]);
   if (r.rowCount === 0) return null;
   return r.rows[0].id;
 };
 
-/**
- * Lấy danh sách công việc hôm nay (cho nhân viên)
- */
-export const getTodayTasks = async (req, res) => {
+// list order chưa có assignment
+export const listAvailableOrders = async (req, res) => {
   try {
-    const staffUserId = req.user.id;
-    const staffId = await getStaffIdByUser(staffUserId);
-    if (!staffId) return res.status(404).json({ message: "Staff profile not found for this user" });
-
     const q = `
-      SELECT 
-        t.id, 
-        t.title,
-        t.status,
-        o.address,
-        o.scheduled_date,
-        u.full_name AS customer_name,
-        u.phone AS customer_phone,
-        STRING_AGG(s.name, ', ') AS services
-      FROM tasks t
-      JOIN assignments a ON a.id = t.assignment_id
-      JOIN orders o ON o.id = a.order_id
-      JOIN users u ON u.id = o.user_id
-      LEFT JOIN order_items oi ON oi.order_id = o.id
-      LEFT JOIN services s ON s.id = oi.service_id
-      WHERE a.staff_id = $1 
-        AND DATE(o.scheduled_date) = CURRENT_DATE
-      GROUP BY t.id, o.address, o.scheduled_date, u.full_name, u.phone
-      ORDER BY t.id DESC
+      SELECT
+        o.id, o.scheduled_date, o.address, o.total_price, o.status_vn, o.note,
+        u.full_name AS customer_name, u.phone AS customer_phone,
+        STRING_AGG(s.name, ', ') AS services,
+        p.name AS plant_name
+      FROM orders o
+      JOIN users u ON u.id=o.user_id
+      LEFT JOIN order_items oi ON oi.order_id=o.id
+      LEFT JOIN services s ON s.id=oi.service_id
+      LEFT JOIN order_plants op ON op.order_id=o.id
+      LEFT JOIN plants p ON p.id=op.plant_id
+      LEFT JOIN assignments a ON a.order_id=o.id
+      WHERE a.id IS NULL AND o.status_vn=$1
+      GROUP BY o.id, u.full_name, u.phone, p.name
+      ORDER BY o.scheduled_date ASC
     `;
-    const result = await pool.query(q, [staffId]);
-
-    res.json(result.rows);
+    const r = await pool.query(q, [STATUS.PENDING]);
+    res.json(r.rows);
   } catch (err) {
-    console.error("getTodayTasks error:", err);
+    console.error("listAvailableOrders", err);
     res.status(500).json({ error: err.message });
   }
 };
 
-/**
- * Lấy tất cả công việc của nhân viên
- */
-export const getAllTasks = async (req, res) => {
+// list task (đơn đã nhận)
+export const listMyTasks = async (req, res) => {
   try {
-    const staffUserId = req.user.id;
-    const staffId = await getStaffIdByUser(staffUserId);
-    if (!staffId) return res.status(404).json({ message: "Staff profile not found for this user" });
+    const staffId = await getStaffIdByUser(req.user.id);
+    if (!staffId) return res.status(404).json({ message: "Staff profile not found" });
 
     const q = `
-      SELECT 
-        t.id, 
-        t.title,
-        t.status,
-        u.full_name AS customer_name,
-        u.phone AS customer_phone,
-        o.address,
-        o.scheduled_date,
-        STRING_AGG(s.name, ', ') AS services
-      FROM tasks t
-      JOIN assignments a ON a.id = t.assignment_id
-      JOIN orders o ON o.id = a.order_id
-      JOIN users u ON u.id = o.user_id
-      LEFT JOIN order_items oi ON oi.order_id = o.id
-      LEFT JOIN services s ON s.id = oi.service_id
-      WHERE a.staff_id = $1
-      GROUP BY t.id, u.full_name, u.phone, o.address, o.scheduled_date
-      ORDER BY t.id DESC
+      SELECT
+        o.id, o.scheduled_date, o.address, o.total_price, o.status_vn, o.note,
+        u.full_name AS customer_name, u.phone AS customer_phone,
+        STRING_AGG(s.name, ', ') AS services,
+        p.name AS plant_name,
+        a.status AS assignment_status
+      FROM assignments a
+      JOIN orders o ON o.id=a.order_id
+      JOIN users u ON u.id=o.user_id
+      LEFT JOIN order_items oi ON oi.order_id=o.id
+      LEFT JOIN services s ON s.id=oi.service_id
+      LEFT JOIN order_plants op ON op.order_id=o.id
+      LEFT JOIN plants p ON p.id=op.plant_id
+      WHERE a.staff_id=$1
+      GROUP BY o.id, u.full_name, u.phone, p.name, a.status
+      ORDER BY o.scheduled_date DESC
     `;
-    const result = await pool.query(q, [staffId]);
-
-    res.json(result.rows);
+    const r = await pool.query(q, [staffId]);
+    res.json(r.rows);
   } catch (err) {
-    console.error("getAllTasks error:", err);
+    console.error("listMyTasks", err);
     res.status(500).json({ error: err.message });
   }
 };
 
-/**
- * Chi tiết công việc
- */
 export const getTaskDetail = async (req, res) => {
   try {
-    const taskId = req.params.id;
+    const orderId = Number(req.params.id);
+    const staffId = await getStaffIdByUser(req.user.id);
 
     const q = `
-      SELECT 
-        t.id,
-        t.title,
-        t.description,
-        t.status,
-        o.address,
-        o.scheduled_date,
-        u.full_name AS customer_name,
-        u.phone AS customer_phone,
-        STRING_AGG(s.name, ', ') AS services
-      FROM tasks t
-      JOIN assignments a ON t.assignment_id = a.id
-      JOIN orders o ON a.order_id = o.id
-      JOIN users u ON u.id = o.user_id
-      LEFT JOIN order_items oi ON oi.order_id = o.id
-      LEFT JOIN services s ON s.id = oi.service_id
-      WHERE t.id = $1
-      GROUP BY t.id, o.address, o.scheduled_date, u.full_name, u.phone
+      SELECT
+        o.*, u.full_name AS customer_name, u.phone AS customer_phone,
+        STRING_AGG(s.name, ', ') AS services,
+        p.*
+      FROM assignments a
+      JOIN orders o ON o.id=a.order_id
+      JOIN users u ON u.id=o.user_id
+      LEFT JOIN order_items oi ON oi.order_id=o.id
+      LEFT JOIN services s ON s.id=oi.service_id
+      LEFT JOIN order_plants op ON op.order_id=o.id
+      LEFT JOIN plants p ON p.id=op.plant_id
+      WHERE a.staff_id=$1 AND o.id=$2
+      GROUP BY o.id, u.full_name, u.phone, p.id
     `;
-    const result = await pool.query(q, [taskId]);
+    const r = await pool.query(q, [staffId, orderId]);
+    if (r.rowCount === 0) return res.status(404).json({ message: "Not found" });
 
-    if (result.rowCount === 0) return res.status(404).json({ message: "Task not found" });
-
-    res.json(result.rows[0]);
+    res.json(r.rows[0]);
   } catch (err) {
-    console.error("getTaskDetail error:", err);
+    console.error("getTaskDetail", err);
     res.status(500).json({ error: err.message });
   }
 };
 
-/**
- * Staff bắt đầu công việc
- */
-export const startTask = async (req, res) => {
+const changeOrderStatus = async (client, order, userId, action, note="") => {
+  const next = nextStatusForStaffAction(order.status_vn, action);
+  if (!next) throw new Error("Invalid status transition");
+
+  await client.query(
+    "UPDATE orders SET status_vn=$1, updated_at=NOW() WHERE id=$2",
+    [next, order.id]
+  );
+
+  await client.query(
+    `INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, note)
+     VALUES ($1,$2,$3,$4,$5)`,
+    [order.id, order.status_vn, next, userId, note || action]
+  );
+
+  await client.query(
+    `INSERT INTO notifications (user_id, title, message, is_read, created_at)
+     VALUES ($1,$2,$3,false,NOW())`,
+    [order.user_id, "Cập nhật đơn hàng", `Đơn #${order.id} chuyển trạng thái: ${next}`]
+  );
+
+  return next;
+};
+
+// accept -> tạo assignment + task
+export const acceptOrder = async (req, res) => {
+  const orderId = Number(req.params.id);
+  const userId = req.user.id;
+  const staffId = await getStaffIdByUser(userId);
+
+  const client = await pool.connect();
   try {
-    const taskId = req.params.id;
-    // Optionally check staff ownership: ensure this user is assigned to this task
-    const staffUserId = req.user.id;
-    const staffId = await getStaffIdByUser(staffUserId);
-    if (!staffId) return res.status(404).json({ message: "Staff profile not found for this user" });
+    await client.query("BEGIN");
 
-    // verify ownership
-    const chk = await pool.query(
-      `SELECT a.* FROM tasks t JOIN assignments a ON t.assignment_id = a.id WHERE t.id=$1 AND a.staff_id=$2`,
-      [taskId, staffId]
+    const oRes = await client.query("SELECT * FROM orders WHERE id=$1 FOR UPDATE", [orderId]);
+    if (oRes.rowCount === 0) throw new Error("Order not found");
+    const order = oRes.rows[0];
+
+    // check chưa ai nhận
+    const chk = await client.query("SELECT * FROM assignments WHERE order_id=$1", [orderId]);
+    if (chk.rowCount > 0) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ message: "Order already assigned" });
+    }
+
+    const aRes = await client.query(
+      `INSERT INTO assignments (order_id, staff_id, assigned_at, status)
+       VALUES ($1,$2,NOW(),'assigned') RETURNING *`,
+      [orderId, staffId]
     );
-    if (chk.rowCount === 0) return res.status(403).json({ message: "Forbidden" });
 
-    await pool.query(
-      "UPDATE tasks SET status='in_progress' WHERE id=$1",
-      [taskId]
+    // tạo 1 task cho order
+    await client.query(
+      `INSERT INTO tasks (assignment_id, title, description, status)
+       VALUES ($1,$2,$3,'pending')`,
+      [aRes.rows[0].id, `Chăm sóc đơn #${orderId}`, order.note || ""]
     );
 
-    res.json({ message: "Task started" });
+    const next = await changeOrderStatus(client, order, userId, "accept");
+
+    await client.query("COMMIT");
+    res.json({ message: "Accepted", status: next });
   } catch (err) {
-    console.error("startTask error:", err);
+    await client.query("ROLLBACK").catch(()=>{});
+    console.error("acceptOrder", err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+};
+
+// reject -> tạo notification cho admin để reassign
+export const rejectOrder = async (req, res) => {
+  const orderId = Number(req.params.id);
+  const reason = req.body.reason || "staff reject";
+  try {
+    await pool.query(
+      `INSERT INTO notifications (user_id, title, message, is_read, created_at)
+       SELECT u.id, 'Staff từ chối', $2, false, NOW()
+       FROM users u WHERE u.role_id=1`,
+      [orderId, `Đơn #${orderId} bị staff từ chối. Lý do: ${reason}`]
+    );
+    res.json({ message: "Reject request sent to admin" });
+  } catch (err) {
+    console.error("rejectOrder", err);
     res.status(500).json({ error: err.message });
   }
 };
 
-/**
- * Staff hoàn thành công việc
- */
-export const completeTask = async (req, res) => {
+export const moveOrder = async (req, res) => {
+  const orderId = Number(req.params.id);
+  const staffUserId = req.user.id;
+  const staffId = await getStaffIdByUser(staffUserId);
+
+  const client = await pool.connect();
   try {
-    const taskId = req.params.id;
-    const staffUserId = req.user.id;
-    const staffId = await getStaffIdByUser(staffUserId);
-    if (!staffId) return res.status(404).json({ message: "Staff profile not found for this user" });
-
-    // verify ownership
-    const chk = await pool.query(
-      `SELECT a.* FROM tasks t JOIN assignments a ON t.assignment_id = a.id WHERE t.id=$1 AND a.staff_id=$2`,
-      [taskId, staffId]
+    await client.query("BEGIN");
+    const oRes = await client.query(
+      `SELECT o.* FROM orders o
+       JOIN assignments a ON a.order_id=o.id
+       WHERE o.id=$1 AND a.staff_id=$2 FOR UPDATE`,
+      [orderId, staffId]
     );
-    if (chk.rowCount === 0) return res.status(403).json({ message: "Forbidden" });
+    if (oRes.rowCount === 0) throw new Error("Forbidden");
 
-    await pool.query(
-      "UPDATE tasks SET status='completed', completed_at=NOW() WHERE id=$1",
-      [taskId]
-    );
-
-    res.json({ message: "Task completed" });
+    const next = await changeOrderStatus(client, oRes.rows[0], staffUserId, "move");
+    await client.query("COMMIT");
+    res.json({ message: "Moving", status: next });
   } catch (err) {
-    console.error("completeTask error:", err);
+    await client.query("ROLLBACK").catch(()=>{});
+    console.error("moveOrder", err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+};
+
+export const startCareOrder = async (req, res) => {
+  const orderId = Number(req.params.id);
+  const staffUserId = req.user.id;
+  const staffId = await getStaffIdByUser(staffUserId);
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const oRes = await client.query(
+      `SELECT o.* FROM orders o
+       JOIN assignments a ON a.order_id=o.id
+       WHERE o.id=$1 AND a.staff_id=$2 FOR UPDATE`,
+      [orderId, staffId]
+    );
+    if (oRes.rowCount === 0) throw new Error("Forbidden");
+
+    const next = await changeOrderStatus(client, oRes.rows[0], staffUserId, "care");
+    await client.query("COMMIT");
+    res.json({ message: "Caring", status: next });
+  } catch (err) {
+    await client.query("ROLLBACK").catch(()=>{});
+    console.error("startCareOrder", err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+};
+
+export const completeOrder = async (req, res) => {
+  const orderId = Number(req.params.id);
+  const staffUserId = req.user.id;
+  const staffId = await getStaffIdByUser(staffUserId);
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const oRes = await client.query(
+      `SELECT o.* FROM orders o
+       JOIN assignments a ON a.order_id=o.id
+       WHERE o.id=$1 AND a.staff_id=$2 FOR UPDATE`,
+      [orderId, staffId]
+    );
+    if (oRes.rowCount === 0) throw new Error("Forbidden");
+
+    const order = oRes.rows[0];
+    const next = await changeOrderStatus(client, order, staffUserId, "complete");
+
+    await client.query(
+      "UPDATE assignments SET status='done' WHERE order_id=$1",
+      [orderId]
+    );
+    await client.query(
+      "UPDATE tasks SET status='completed', completed_at=NOW() WHERE assignment_id=(SELECT id FROM assignments WHERE order_id=$1)",
+      [orderId]
+    );
+
+    // milestone bonus cho staff
+    const doneCntRes = await client.query(
+      `SELECT COUNT(*)::int AS cnt
+       FROM assignments a JOIN orders o ON a.order_id=o.id
+       WHERE a.staff_id=$1 AND o.status_vn=$2`,
+      [staffId, STATUS.DONE]
+    );
+    const cnt = doneCntRes.rows[0].cnt;
+    if (cnt % 2 === 0) {
+      const bonus = Math.min(5 + cnt, 50); // demo: tăng dần nhưng cap 50$
+      await client.query(
+        `INSERT INTO staff_bonuses (staff_id, order_id, milestone, bonus_amount)
+         VALUES ($1,$2,$3,$4)`,
+        [staffId, orderId, cnt, bonus]
+      );
+    }
+
+    await client.query("COMMIT");
+    res.json({ message: "Completed", status: next });
+  } catch (err) {
+    await client.query("ROLLBACK").catch(()=>{});
+    console.error("completeOrder", err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+};
+
+export const taskHistory = async (req, res) => {
+  try {
+    const staffId = await getStaffIdByUser(req.user.id);
+    const r = await pool.query(
+      `SELECT o.id, o.scheduled_date, o.address, o.total_price, o.status_vn,
+              u.full_name as customer_name
+       FROM assignments a
+       JOIN orders o ON o.id=a.order_id
+       JOIN users u ON u.id=o.user_id
+       WHERE a.staff_id=$1 AND o.status_vn IN ($2,$3)
+       ORDER BY o.scheduled_date DESC`,
+      [staffId, STATUS.DONE, STATUS.CANCELLED]
+    );
+    res.json(r.rows);
+  } catch (err) {
+    console.error("taskHistory", err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// thống kê thu nhập tuần/tháng + bonus
+export const incomeStats = async (req, res) => {
+  try {
+    const staffId = await getStaffIdByUser(req.user.id);
+
+    const incomeRes = await pool.query(
+      `SELECT
+         DATE_TRUNC('month', o.scheduled_date) AS month,
+         SUM(o.total_price)::numeric(12,2) AS income
+       FROM assignments a
+       JOIN orders o ON o.id=a.order_id
+       WHERE a.staff_id=$1 AND o.status_vn=$2
+       GROUP BY month
+       ORDER BY month DESC
+       LIMIT 12`,
+      [staffId, STATUS.DONE]
+    );
+
+    const bonusRes = await pool.query(
+      `SELECT milestone, bonus_amount, created_at, order_id
+       FROM staff_bonuses WHERE staff_id=$1
+       ORDER BY created_at DESC LIMIT 50`,
+      [staffId]
+    );
+
+    res.json({ income_by_month: incomeRes.rows, bonuses: bonusRes.rows });
+  } catch (err) {
+    console.error("incomeStats", err);
     res.status(500).json({ error: err.message });
   }
 };

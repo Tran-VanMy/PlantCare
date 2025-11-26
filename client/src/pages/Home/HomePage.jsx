@@ -1,20 +1,33 @@
-// client/src/pages/Home/HomePage.jsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import api from "../../api/api";
 import Modal from "../../components/ui/Modal";
 import BookingModal from "../../components/common/BookingModal";
 
+import roundPresets from "../../assets/round-plant/presets.json";
+import servicePresets from "../../assets/services-plant/presets.json";
+
 export default function HomePage() {
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [modalOpen, setModalOpen] = useState(false); // login modal fallback
+  const [modalOpen, setModalOpen] = useState(false);
   const [bookingOpen, setBookingOpen] = useState(false);
   const [bookingSingle, setBookingSingle] = useState(null);
   const [currentIndex, setCurrentIndex] = useState(0);
+
+  // slider hero
+  const [heroIndex, setHeroIndex] = useState(0);
+  const heroImages = roundPresets.images;
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setHeroIndex((i) => (i + 1) % heroImages.length);
+    }, 2000);
+    return () => clearInterval(id);
+  }, [heroImages.length]);
+
   const navigate = useNavigate();
 
-  // Lấy danh sách dịch vụ từ backend
   useEffect(() => {
     let cancelled = false;
     async function load() {
@@ -29,31 +42,30 @@ export default function HomePage() {
       }
     }
     load();
-    return () => {
-      cancelled = true;
-    };
+    return () => (cancelled = true);
   }, []);
 
   function handleBook(service) {
     const token = localStorage.getItem("token");
-    if (!token) {
-      setModalOpen(true);
-      return;
-    }
-    // Open booking modal for single service
+    if (!token) return setModalOpen(true);
     setBookingSingle(service);
     setBookingOpen(true);
   }
 
   function handleBookNow() {
     const token = localStorage.getItem("token");
-    if (!token) {
-      setModalOpen(true);
-      return;
-    }
+    if (!token) return setModalOpen(true);
     setBookingSingle(null);
     setBookingOpen(true);
   }
+
+  const serviceImageMap = useMemo(() => {
+    const m = {};
+    servicePresets.images.forEach((img, idx) => {
+      m[idx + 1] = `/assets/services-plant/${img}`; // public/assets/...
+    });
+    return m;
+  }, []);
 
   return (
     <div className="min-h-screen flex flex-col font-sans bg-white">
@@ -68,19 +80,37 @@ export default function HomePage() {
         </nav>
       </header>
 
-      {/* Hero Section */}
+      {/* Hero */}
       <section id="home" className="flex flex-col md:flex-row items-center justify-between p-10 bg-white">
         <div className="max-w-lg">
           <h2 className="text-4xl font-bold mb-4">Plant Care Service at Your Home</h2>
           <p className="text-gray-600 mb-6">
             We provide professional plant care at your doorstep. From pruning to pest control, we help your plants stay healthy.
           </p>
-          <button onClick={handleBookNow} className="px-6 py-3 bg-green-600 text-white rounded-lg shadow hover:bg-green-700">Book Now</button>
+          <button onClick={handleBookNow} className="px-6 py-3 bg-green-600 text-white rounded-lg shadow hover:bg-green-700">
+            Book Now
+          </button>
         </div>
-        <img src="/images/plant-hero.jpg" alt="Plant Care" className="w-96 rounded-lg shadow-lg mt-6 md:mt-0" />
+
+        {/* Slider ảnh trượt mượt */}
+        <div className="relative w-96 h-72 overflow-hidden rounded-2xl shadow-lg mt-6 md:mt-0">
+          <div
+            className="flex h-full transition-transform duration-700 ease-in-out"
+            style={{ transform: `translateX(-${heroIndex * 100}%)` }}
+          >
+            {heroImages.map((img) => (
+              <img
+                key={img}
+                src={`/assets/round-plant/${img}`}
+                alt="Plant"
+                className="w-96 h-72 object-cover flex-shrink-0"
+              />
+            ))}
+          </div>
+        </div>
       </section>
 
-      {/* Services Section */}
+      {/* Services */}
       <section id="services" className="py-10 bg-green-50 relative">
         <h3 className="text-center text-2xl font-bold mb-8">Our Services</h3>
 
@@ -89,32 +119,42 @@ export default function HomePage() {
         ) : (
           <div className="relative flex items-center justify-center">
             <button
-              onClick={() => setCurrentIndex((prev) => Math.max(prev - 5, 0))}
+              onClick={() => setCurrentIndex((prev) => Math.max(prev - 4, 0))}
               disabled={currentIndex === 0}
               className={`absolute left-4 z-10 bg-white shadow-lg rounded-full p-3 text-green-600 hover:bg-green-100 transition ${currentIndex === 0 ? "opacity-50 cursor-not-allowed" : ""}`}
             >
               ‹
             </button>
 
-            <div className="flex overflow-hidden gap-6">
-              {services.slice(currentIndex, currentIndex + 5).map((s) => (
-                <div key={s.id} className="bg-white p-6 rounded-lg shadow hover:scale-105 transition w-64">
-                  <div className="w-full h-40 mb-4 overflow-hidden rounded">
-                    <img src={s.image_url || "https://via.placeholder.com/400x300"} alt={s.name} className="w-full h-full object-cover" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 w-full max-w-6xl px-10">
+              {services.slice(currentIndex, currentIndex + 4).map((s) => (
+                <div key={s.id} className="bg-white p-4 rounded-2xl shadow hover:shadow-lg transition flex flex-col h-[360px]">
+                  <div className="w-full h-44 mb-3 overflow-hidden rounded-xl">
+                    <img
+                      src={serviceImageMap[s.id] || s.image_url}
+                      alt={s.name}
+                      className="w-full h-full object-cover"
+                    />
                   </div>
-                  <h4 className="text-lg font-semibold">{s.name}</h4>
-                  <p className="text-gray-600 text-sm mb-2">{s.description?.slice(0, 80) || "No description."}</p>
-                  <p className="text-green-600 font-medium">${s.price}</p>
-                  <p className="text-xs text-gray-500">{s.duration_minutes} minutes</p>
-                  <button onClick={() => handleBook(s)} className="mt-3 w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700">Book</button>
+
+                  <h4 className="text-lg font-semibold line-clamp-1">{s.name}</h4>
+                  <p className="text-gray-600 text-sm mb-2 line-clamp-2">{s.description}</p>
+
+                  <div className="mt-auto">
+                    <p className="text-green-600 font-medium">${s.price}</p>
+                    <p className="text-xs text-gray-500">{s.duration_minutes} minutes</p>
+                    <button onClick={() => handleBook(s)} className="mt-3 w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700">
+                      Book
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
 
             <button
-              onClick={() => setCurrentIndex((prev) => Math.min(prev + 5, services.length - 5))}
-              disabled={currentIndex >= services.length - 5}
-              className={`absolute right-4 z-10 bg-white shadow-lg rounded-full p-3 text-green-600 hover:bg-green-100 transition ${currentIndex >= services.length - 5 ? "opacity-50 cursor-not-allowed" : ""}`}
+              onClick={() => setCurrentIndex((prev) => Math.min(prev + 4, services.length - 4))}
+              disabled={currentIndex >= services.length - 4}
+              className={`absolute right-4 z-10 bg-white shadow-lg rounded-full p-3 text-green-600 hover:bg-green-100 transition ${currentIndex >= services.length - 4 ? "opacity-50 cursor-not-allowed" : ""}`}
             >
               ›
             </button>
@@ -122,7 +162,7 @@ export default function HomePage() {
         )}
       </section>
 
-      {/* Contact Section (was Schedule a Visit) */}
+      {/* Contact */}
       <section className="p-10 bg-white" id="contact">
         <h3 className="text-2xl font-bold mb-6 text-center">Contact</h3>
         <div className="max-w-2xl mx-auto bg-green-50 p-6 rounded-lg">
@@ -130,16 +170,14 @@ export default function HomePage() {
           <p><strong>Email:</strong> support@plantcare.example</p>
           <p><strong>Phone:</strong> +84 123 456 789</p>
           <p><strong>Address:</strong> 123 Plant St, Green City</p>
-          <p className="mt-4 text-sm text-gray-600">Hoặc sử dụng form đặt lịch ở trên để chúng tôi liên hệ lại.</p>
         </div>
       </section>
 
-      {/* Footer */}
       <footer className="text-center py-4 bg-green-100 text-gray-600">
         © 2025 PlantCare. All rights reserved.
       </footer>
 
-      {/* Modal yêu cầu đăng nhập */}
+      {/* Modal login */}
       <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title="Vui lòng đăng nhập">
         <div>
           <p>Bạn cần đăng nhập hoặc đăng ký để đặt dịch vụ.</p>
@@ -150,7 +188,6 @@ export default function HomePage() {
         </div>
       </Modal>
 
-      {/* Booking modal (shared) */}
       <BookingModal
         isOpen={bookingOpen}
         onClose={() => { setBookingOpen(false); setBookingSingle(null); }}
