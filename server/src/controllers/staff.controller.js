@@ -3,7 +3,10 @@ import pool from "../db.js";
 import { STATUS, nextStatusForStaffAction } from "../utils/orderStatus.js";
 
 const getStaffIdByUser = async (userId) => {
-  const r = await pool.query("SELECT id FROM staff WHERE user_id=$1 LIMIT 1", [userId]);
+  const r = await pool.query(
+    "SELECT id FROM staff WHERE user_id=$1 LIMIT 1",
+    [userId]
+  );
   if (r.rowCount === 0) return null;
   return r.rows[0].id;
 };
@@ -13,8 +16,8 @@ export const listAvailableOrders = async (req, res) => {
   try {
     const q = `
       SELECT
-        o.id, o.scheduled_date, o.address, o.total_price, o.status_vn, o.note,
-        u.full_name AS customer_name, u.phone AS customer_phone,
+        o.id, o.scheduled_date, o.address, o.total_price, o.status_vn, o.note, o.phone, o.voucher_code,
+        u.full_name AS customer_name,
         STRING_AGG(s.name, ', ') AS services,
         p.name AS plant_name
       FROM orders o
@@ -25,7 +28,7 @@ export const listAvailableOrders = async (req, res) => {
       LEFT JOIN plants p ON p.id=op.plant_id
       LEFT JOIN assignments a ON a.order_id=o.id
       WHERE a.id IS NULL AND o.status_vn=$1
-      GROUP BY o.id, u.full_name, u.phone, p.name
+      GROUP BY o.id, u.full_name, p.name
       ORDER BY o.scheduled_date ASC
     `;
     const r = await pool.query(q, [STATUS.PENDING]);
@@ -40,12 +43,13 @@ export const listAvailableOrders = async (req, res) => {
 export const listMyTasks = async (req, res) => {
   try {
     const staffId = await getStaffIdByUser(req.user.id);
-    if (!staffId) return res.status(404).json({ message: "Staff profile not found" });
+    if (!staffId)
+      return res.status(404).json({ message: "Staff profile not found" });
 
     const q = `
       SELECT
-        o.id, o.scheduled_date, o.address, o.total_price, o.status_vn, o.note,
-        u.full_name AS customer_name, u.phone AS customer_phone,
+        o.id, o.scheduled_date, o.address, o.total_price, o.status_vn, o.status, o.note, o.phone, o.voucher_code,
+        u.full_name AS customer_name,
         STRING_AGG(s.name, ', ') AS services,
         p.name AS plant_name,
         a.status AS assignment_status
@@ -57,7 +61,7 @@ export const listMyTasks = async (req, res) => {
       LEFT JOIN order_plants op ON op.order_id=o.id
       LEFT JOIN plants p ON p.id=op.plant_id
       WHERE a.staff_id=$1
-      GROUP BY o.id, u.full_name, u.phone, p.name, a.status
+      GROUP BY o.id, u.full_name, p.name, a.status
       ORDER BY o.scheduled_date DESC
     `;
     const r = await pool.query(q, [staffId]);
@@ -75,7 +79,7 @@ export const getTaskDetail = async (req, res) => {
 
     const q = `
       SELECT
-        o.*, u.full_name AS customer_name, u.phone AS customer_phone,
+        o.*, u.full_name AS customer_name,
         STRING_AGG(s.name, ', ') AS services,
         p.*
       FROM assignments a
@@ -86,7 +90,7 @@ export const getTaskDetail = async (req, res) => {
       LEFT JOIN order_plants op ON op.order_id=o.id
       LEFT JOIN plants p ON p.id=op.plant_id
       WHERE a.staff_id=$1 AND o.id=$2
-      GROUP BY o.id, u.full_name, u.phone, p.id
+      GROUP BY o.id, u.full_name, p.id
     `;
     const r = await pool.query(q, [staffId, orderId]);
     if (r.rowCount === 0) return res.status(404).json({ message: "Not found" });
@@ -98,7 +102,7 @@ export const getTaskDetail = async (req, res) => {
   }
 };
 
-const changeOrderStatus = async (client, order, userId, action, note="") => {
+const changeOrderStatus = async (client, order, userId, action, note = "") => {
   const next = nextStatusForStaffAction(order.status_vn, action);
   if (!next) throw new Error("Invalid status transition");
 
@@ -116,7 +120,11 @@ const changeOrderStatus = async (client, order, userId, action, note="") => {
   await client.query(
     `INSERT INTO notifications (user_id, title, message, is_read, created_at)
      VALUES ($1,$2,$3,false,NOW())`,
-    [order.user_id, "Cập nhật đơn hàng", `Đơn #${order.id} chuyển trạng thái: ${next}`]
+    [
+      order.user_id,
+      "Cập nhật đơn hàng",
+      `Đơn #${order.id} chuyển trạng thái: ${next}`,
+    ]
   );
 
   return next;
@@ -132,12 +140,18 @@ export const acceptOrder = async (req, res) => {
   try {
     await client.query("BEGIN");
 
-    const oRes = await client.query("SELECT * FROM orders WHERE id=$1 FOR UPDATE", [orderId]);
+    const oRes = await client.query(
+      "SELECT * FROM orders WHERE id=$1 FOR UPDATE",
+      [orderId]
+    );
     if (oRes.rowCount === 0) throw new Error("Order not found");
     const order = oRes.rows[0];
 
     // check chưa ai nhận
-    const chk = await client.query("SELECT * FROM assignments WHERE order_id=$1", [orderId]);
+    const chk = await client.query(
+      "SELECT * FROM assignments WHERE order_id=$1",
+      [orderId]
+    );
     if (chk.rowCount > 0) {
       await client.query("ROLLBACK");
       return res.status(400).json({ message: "Order already assigned" });
@@ -161,7 +175,7 @@ export const acceptOrder = async (req, res) => {
     await client.query("COMMIT");
     res.json({ message: "Accepted", status: next });
   } catch (err) {
-    await client.query("ROLLBACK").catch(()=>{});
+    await client.query("ROLLBACK").catch(() => {});
     console.error("acceptOrder", err);
     res.status(500).json({ error: err.message });
   } finally {
@@ -203,11 +217,16 @@ export const moveOrder = async (req, res) => {
     );
     if (oRes.rowCount === 0) throw new Error("Forbidden");
 
-    const next = await changeOrderStatus(client, oRes.rows[0], staffUserId, "move");
+    const next = await changeOrderStatus(
+      client,
+      oRes.rows[0],
+      staffUserId,
+      "move"
+    );
     await client.query("COMMIT");
     res.json({ message: "Moving", status: next });
   } catch (err) {
-    await client.query("ROLLBACK").catch(()=>{});
+    await client.query("ROLLBACK").catch(() => {});
     console.error("moveOrder", err);
     res.status(500).json({ error: err.message });
   } finally {
@@ -231,11 +250,16 @@ export const startCareOrder = async (req, res) => {
     );
     if (oRes.rowCount === 0) throw new Error("Forbidden");
 
-    const next = await changeOrderStatus(client, oRes.rows[0], staffUserId, "care");
+    const next = await changeOrderStatus(
+      client,
+      oRes.rows[0],
+      staffUserId,
+      "care"
+    );
     await client.query("COMMIT");
     res.json({ message: "Caring", status: next });
   } catch (err) {
-    await client.query("ROLLBACK").catch(()=>{});
+    await client.query("ROLLBACK").catch(() => {});
     console.error("startCareOrder", err);
     res.status(500).json({ error: err.message });
   } finally {
@@ -260,7 +284,12 @@ export const completeOrder = async (req, res) => {
     if (oRes.rowCount === 0) throw new Error("Forbidden");
 
     const order = oRes.rows[0];
-    const next = await changeOrderStatus(client, order, staffUserId, "complete");
+    const next = await changeOrderStatus(
+      client,
+      order,
+      staffUserId,
+      "complete"
+    );
 
     await client.query(
       "UPDATE assignments SET status='done' WHERE order_id=$1",
@@ -280,7 +309,7 @@ export const completeOrder = async (req, res) => {
     );
     const cnt = doneCntRes.rows[0].cnt;
     if (cnt % 2 === 0) {
-      const bonus = Math.min(5 + cnt, 50); // demo: tăng dần nhưng cap 50$
+      const bonus = Math.min(5 + cnt, 50);
       await client.query(
         `INSERT INTO staff_bonuses (staff_id, order_id, milestone, bonus_amount)
          VALUES ($1,$2,$3,$4)`,
@@ -291,7 +320,7 @@ export const completeOrder = async (req, res) => {
     await client.query("COMMIT");
     res.json({ message: "Completed", status: next });
   } catch (err) {
-    await client.query("ROLLBACK").catch(()=>{});
+    await client.query("ROLLBACK").catch(() => {});
     console.error("completeOrder", err);
     res.status(500).json({ error: err.message });
   } finally {
@@ -303,7 +332,7 @@ export const taskHistory = async (req, res) => {
   try {
     const staffId = await getStaffIdByUser(req.user.id);
     const r = await pool.query(
-      `SELECT o.id, o.scheduled_date, o.address, o.total_price, o.status_vn,
+      `SELECT o.id, o.scheduled_date, o.address, o.phone, o.total_price, o.status_vn,
               u.full_name as customer_name
        FROM assignments a
        JOIN orders o ON o.id=a.order_id
@@ -344,7 +373,10 @@ export const incomeStats = async (req, res) => {
       [staffId]
     );
 
-    res.json({ income_by_month: incomeRes.rows, bonuses: bonusRes.rows });
+    res.json({
+      income_by_month: incomeRes.rows,
+      bonuses: bonusRes.rows,
+    });
   } catch (err) {
     console.error("incomeStats", err);
     res.status(500).json({ error: err.message });

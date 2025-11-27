@@ -1,25 +1,47 @@
 // server/src/controllers/admin.controller.js
 import pool from "../db.js";
+import { STATUS } from "../utils/orderStatus.js";
+
+/**
+ * Map status EN -> status VN
+ */
+const mapStatusVN = (status) => {
+  switch (status) {
+    case "pending":
+      return STATUS.PENDING;
+    case "confirmed":
+    case "accepted":
+    case "assigned":
+      return STATUS.ACCEPTED;
+    case "moving":
+    case "in_progress":
+      return STATUS.MOVING;
+    case "caring":
+      return STATUS.CARING;
+    case "completed":
+    case "done":
+      return STATUS.DONE;
+    case "cancelled":
+      return STATUS.CANCELLED;
+    default:
+      return null;
+  }
+};
 
 /**
  * GET /api/admin/stats
- * Trả về: { orders, staff, customers, revenue }
  */
 export const getStats = async (req, res) => {
   try {
     const ordersRes = await pool.query(
       "SELECT COUNT(*)::int AS count FROM orders"
     );
-
-    // STAFF = users có role_id = 2
     const staffRes = await pool.query(
       "SELECT COUNT(*)::int AS count FROM users WHERE role_id = 2"
     );
-
     const customersRes = await pool.query(
       "SELECT COUNT(*)::int AS count FROM users WHERE role_id = 3"
     );
-
     const revenueRes = await pool.query(
       "SELECT COALESCE(SUM(amount),0)::numeric(12,2) AS sum FROM payments WHERE payment_status = 'paid'"
     );
@@ -76,6 +98,7 @@ export const listServices = async (req, res) => {
 
 /**
  * GET /api/admin/orders
+ * ✅ trả đầy đủ info cho UI admin
  */
 export const listOrders = async (req, res) => {
   try {
@@ -85,30 +108,43 @@ export const listOrders = async (req, res) => {
         o.user_id,
         u.full_name AS customer_name,
         o.status,
+        o.status_vn,
         o.total_price AS total,
         o.scheduled_date AS date,
-        TO_CHAR(o.scheduled_date, 'YYYY-MM-DD') AS date_str,
-        STRING_AGG(s.name, ', ') AS service_name
+        o.address,
+        o.phone,
+        o.note,
+        o.voucher_code,
+        STRING_AGG(s.name, ', ') AS service_name,
+        p.name AS plant_name
       FROM orders o
       LEFT JOIN users u ON o.user_id = u.id
       LEFT JOIN order_items oi ON oi.order_id = o.id
       LEFT JOIN services s ON oi.service_id = s.id
-      GROUP BY o.id, o.user_id, u.full_name, o.status, o.total_price, o.scheduled_date
+      LEFT JOIN order_plants op ON op.order_id=o.id
+      LEFT JOIN plants p ON p.id=op.plant_id
+      GROUP BY o.id, o.user_id, u.full_name, o.status, o.status_vn, o.total_price, o.scheduled_date, o.address, o.phone, o.note, o.voucher_code, p.name
       ORDER BY o.scheduled_date DESC
-      LIMIT 500
+      LIMIT 1000
     `;
     const result = await pool.query(q);
 
-    const rows = result.rows.map(r => ({
-      id: r.id,
-      customer_name: r.customer_name,
-      service_name: r.service_name,
-      total: Number(r.total) || 0,
-      date: r.date_str || r.date,
-      status: r.status,
-    }));
-
-    return res.json(rows);
+    return res.json(
+      result.rows.map((r) => ({
+        id: r.id,
+        customer_name: r.customer_name,
+        service_name: r.service_name,
+        plant_name: r.plant_name || "—",
+        total: Number(r.total) || 0,
+        date: r.date,
+        address: r.address,
+        phone: r.phone,
+        note: r.note,
+        voucher_code: r.voucher_code,
+        status: r.status,
+        status_vn: r.status_vn,
+      }))
+    );
   } catch (err) {
     console.error("listOrders error:", err);
     return res.status(500).json({ error: err.message });
@@ -117,6 +153,7 @@ export const listOrders = async (req, res) => {
 
 /**
  * PUT /api/admin/orders/:id
+ * ✅ update cả status và status_vn để đồng bộ
  */
 export const updateOrderStatus = async (req, res) => {
   const orderId = req.params.id;
@@ -126,20 +163,18 @@ export const updateOrderStatus = async (req, res) => {
     return res.status(400).json({ message: "status is required" });
 
   try {
-    const check = await pool.query(
-      "SELECT id FROM orders WHERE id=$1",
-      [orderId]
-    );
-
+    const check = await pool.query("SELECT * FROM orders WHERE id=$1", [orderId]);
     if (check.rowCount === 0)
       return res.status(404).json({ message: "Order not found" });
 
+    const vn = mapStatusVN(status) || check.rows[0].status_vn;
+
     await pool.query(
-      "UPDATE orders SET status=$1, updated_at=NOW() WHERE id=$2",
-      [status, orderId]
+      "UPDATE orders SET status=$1, status_vn=$2, updated_at=NOW() WHERE id=$3",
+      [status, vn, orderId]
     );
 
-    return res.json({ message: "Order status updated" });
+    return res.json({ message: "Order status updated", status, status_vn: vn });
   } catch (err) {
     console.error("updateOrderStatus error:", err);
     return res.status(500).json({ error: err.message });

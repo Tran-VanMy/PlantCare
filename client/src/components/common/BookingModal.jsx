@@ -79,8 +79,8 @@ export default function BookingModal({
       alert("Vui lòng chọn ít nhất 1 dịch vụ.");
       return;
     }
-    if (!form.name || !form.phone || !form.date || !form.address) {
-      alert("Vui lòng điền tên, số điện thoại, ngày và địa chỉ.");
+    if (!form.name || !form.date || !form.address) {
+      alert("Vui lòng điền tên, ngày và địa chỉ.");
       return;
     }
 
@@ -103,6 +103,7 @@ export default function BookingModal({
         note: noteFinal,
         plant_id: form.plant_id || null,
         voucher_code: form.voucher_code?.trim() || null,
+        phone: form.phone?.trim() || null, // ✅ gửi phone lên server
       });
 
       onBooked && onBooked();
@@ -181,14 +182,16 @@ export default function BookingModal({
               onChange={handleChange}
               required
             />
+
+            {/* ✅ phone có thể trống -> server fallback */}
             <input
               name="phone"
-              placeholder="Số điện thoại"
+              placeholder="Số điện thoại (có thể để trống)"
               className="border p-2 rounded w-full"
               value={form.phone}
               onChange={handleChange}
-              required
             />
+
             <input
               name="address"
               placeholder="Địa chỉ"

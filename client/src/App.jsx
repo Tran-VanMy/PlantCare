@@ -10,18 +10,23 @@ import RegisterPage from "./pages/Auth/RegisterPage";
 import CustomerDashboard from "./pages/Customer/CustomerDashboard";
 import MyPlants from "./pages/Customer/MyPlants";
 import OrderHistory from "./pages/Customer/OrderHistory";
+import Vouchers from "./pages/Customer/Vouchers";
 
 // 👷 Staff pages
 import StaffDashboard from "./pages/Staff/StaffDashboard";
 import TaskList from "./pages/Staff/TaskList";
 import VisitDetail from "./pages/Staff/VisitDetail";
+import TaskHistory from "./pages/Staff/TaskHistory";
 
 // 🧑‍💼 Admin pages
 import AdminDashboard from "./pages/Admin/AdminDashboard";
 import UsersManagement from "./pages/Admin/UsersManagement";
 import ServicesManagement from "./pages/Admin/ServicesManagement";
 import OrdersManagement from "./pages/Admin/OrdersManagement";
-import Reports from "./pages/Admin/Reports"; // <-- new
+import Reports from "./pages/Admin/Reports";
+
+// 👤 Profile
+import ProfilePage from "./pages/Profile/ProfilePage";
 
 // ⚙️ Common components
 import PrivateRoute from "./components/common/PrivateRoute";
@@ -39,6 +44,16 @@ export default function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+
+          {/* 👤 Profile */}
+          <Route
+            path="/profile"
+            element={
+              <PrivateRoute>
+                <ProfilePage />
+              </PrivateRoute>
+            }
+          />
 
           {/* 👤 Customer routes */}
           <Route
@@ -65,6 +80,14 @@ export default function App() {
               </PrivateRoute>
             }
           />
+          <Route
+            path="/customer/vouchers"
+            element={
+              <PrivateRoute role="customer">
+                <Vouchers />
+              </PrivateRoute>
+            }
+          />
 
           {/* 👷 Staff routes */}
           <Route
@@ -80,6 +103,14 @@ export default function App() {
             element={
               <PrivateRoute role="staff">
                 <TaskList />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/staff/history"
+            element={
+              <PrivateRoute role="staff">
+                <TaskHistory />
               </PrivateRoute>
             }
           />

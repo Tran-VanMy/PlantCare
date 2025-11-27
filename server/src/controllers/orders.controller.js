@@ -25,7 +25,10 @@ const createVoucherForUserIfNeeded = async (client, userId) => {
 
   const milestone = cnt; // 2,4,6...
   const discount = milestoneDiscount(milestone);
-  const code = `PC-${userId}-${milestone}-${Math.random().toString(36).slice(2,6).toUpperCase()}`;
+  const code = `PC-${userId}-${milestone}-${Math.random()
+    .toString(36)
+    .slice(2, 6)
+    .toUpperCase()}`;
 
   const vRes = await client.query(
     `INSERT INTO vouchers (code, discount_percent, expires_at)
@@ -45,15 +48,33 @@ const createVoucherForUserIfNeeded = async (client, userId) => {
 
 export const createOrder = async (req, res) => {
   const userId = req.user?.id;
-  const { services, scheduled_date, address, note, plant_id, voucher_code } = req.body;
+  const {
+    services,
+    scheduled_date,
+    address,
+    note,
+    plant_id,
+    voucher_code,
+    phone, // ✅ phone nhập lúc book
+  } = req.body;
 
   if (!Array.isArray(services) || services.length === 0) {
-    return res.status(400).json({ message: "services is required and must be a non-empty array" });
+    return res
+      .status(400)
+      .json({ message: "services is required and must be a non-empty array" });
   }
 
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+
+    // lấy thông tin user để fallback phone
+    const userRes = await client.query(
+      `SELECT phone FROM users WHERE id=$1 LIMIT 1`,
+      [userId]
+    );
+    const userPhone = userRes.rowCount ? userRes.rows[0].phone : null;
+    const finalPhone = phone?.trim() || userPhone || null;
 
     // kiểm tra voucher nếu có
     let voucher = null;
@@ -68,16 +89,26 @@ export const createOrder = async (req, res) => {
       );
       if (vq.rowCount === 0) {
         await client.query("ROLLBACK");
-        return res.status(400).json({ message: "Voucher không hợp lệ hoặc đã hết hạn." });
+        return res
+          .status(400)
+          .json({ message: "Voucher không hợp lệ hoặc đã hết hạn." });
       }
       voucher = vq.rows[0];
     }
 
     const orderRes = await client.query(
-      `INSERT INTO orders (user_id, scheduled_date, address, note, status, status_vn, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,'pending',$5,NOW(),NOW())
+      `INSERT INTO orders (user_id, scheduled_date, address, note, phone, voucher_code, status, status_vn, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,NOW(),NOW())
        RETURNING *`,
-      [userId, scheduled_date || null, address || null, note || null, STATUS.PENDING]
+      [
+        userId,
+        scheduled_date || null,
+        address || null,
+        note || null,
+        finalPhone,
+        voucher_code?.trim() || null,
+        STATUS.PENDING,
+      ]
     );
     const order = orderRes.rows[0];
 
@@ -88,7 +119,9 @@ export const createOrder = async (req, res) => {
       const price = Number(s.price);
       if (!serviceId || isNaN(price)) {
         await client.query("ROLLBACK");
-        return res.status(400).json({ message: "Each service must have service_id and price" });
+        return res
+          .status(400)
+          .json({ message: "Each service must have service_id and price" });
       }
       total += qty * price;
       await client.query(
@@ -107,10 +140,10 @@ export const createOrder = async (req, res) => {
       );
     }
 
-    await client.query(
-      `UPDATE orders SET total_price=$1 WHERE id=$2`,
-      [total, order.id]
-    );
+    await client.query(`UPDATE orders SET total_price=$1 WHERE id=$2`, [
+      total,
+      order.id,
+    ]);
 
     // gắn plant vào order nếu có
     if (plant_id) {
@@ -134,8 +167,10 @@ export const createOrder = async (req, res) => {
       [order.id, STATUS.PENDING, userId]
     );
 
-    // notifications cho admin và staff
-    const staffUsers = await client.query(`SELECT user_id FROM staff WHERE availability=true`);
+    // notifications cho staff
+    const staffUsers = await client.query(
+      `SELECT user_id FROM staff WHERE availability=true`
+    );
     for (const st of staffUsers.rows) {
       await client.query(
         `INSERT INTO notifications (user_id, title, message, is_read, created_at)
@@ -153,6 +188,7 @@ export const createOrder = async (req, res) => {
       message: "Order created and payment confirmed",
       order_id: order.id,
       total,
+      phone: finalPhone,
       voucher_awarded: newVoucher,
     });
   } catch (err) {
@@ -178,9 +214,12 @@ export const getCustomerOrders = async (req, res) => {
         o.id,
         o.total_price AS total,
         o.status_vn AS status,
+        o.status as status_en,
         o.scheduled_date AS date,
         o.address,
         o.note,
+        o.phone,
+        o.voucher_code,
         STRING_AGG(s.name, ', ') AS service_name,
         p.name AS plant_name
       FROM orders o
@@ -189,7 +228,7 @@ export const getCustomerOrders = async (req, res) => {
       LEFT JOIN order_plants op ON op.order_id=o.id
       LEFT JOIN plants p ON p.id=op.plant_id
       WHERE o.user_id = $1
-      GROUP BY o.id, o.total_price, o.status_vn, o.scheduled_date, o.address, o.note, p.name
+      GROUP BY o.id, o.total_price, o.status_vn, o.status, o.scheduled_date, o.address, o.note, o.phone, o.voucher_code, p.name
       ORDER BY o.scheduled_date DESC
       LIMIT 1000
     `;
@@ -204,7 +243,10 @@ export const getCustomerOrders = async (req, res) => {
         date: row.date,
         address: row.address,
         note: row.note,
+        phone: row.phone,
+        voucher_code: row.voucher_code,
         status: row.status,
+        status_en: row.status_en,
       }))
     );
   } catch (err) {
@@ -219,16 +261,21 @@ export const cancelOrderByCustomer = async (req, res) => {
 
   try {
     const oRes = await pool.query("SELECT * FROM orders WHERE id=$1", [orderId]);
-    if (oRes.rowCount === 0) return res.status(404).json({ message: "Order not found" });
+    if (oRes.rowCount === 0)
+      return res.status(404).json({ message: "Order not found" });
 
     const order = oRes.rows[0];
-    if (order.user_id !== userId) return res.status(403).json({ message: "Forbidden" });
+    if (order.user_id !== userId)
+      return res.status(403).json({ message: "Forbidden" });
 
     if (!canCustomerCancel(order.status_vn)) {
-      return res.status(400).json({ message: "Đơn đã có staff nhận, không thể hủy." });
+      return res
+        .status(400)
+        .json({ message: "Đơn đã có staff nhận, không thể hủy." });
     }
 
-    await pool.query("UPDATE orders SET status_vn=$1, status='cancelled', updated_at=NOW() WHERE id=$2",
+    await pool.query(
+      "UPDATE orders SET status_vn=$1, status='cancelled', updated_at=NOW() WHERE id=$2",
       [STATUS.CANCELLED, orderId]
     );
 

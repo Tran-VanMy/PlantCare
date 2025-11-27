@@ -1,192 +1,52 @@
-// import { useState } from "react";
-
-// export default function OrdersManagement() {
-//   const [orders, setOrders] = useState([
-//     {
-//       id: 101,
-//       customer: "Nguyễn Văn A",
-//       service: "Tưới cây",
-//       total: 10,
-//       date: "2025-11-08",
-//       status: "pending",
-//     },
-//     {
-//       id: 102,
-//       customer: "Trần Thị B",
-//       service: "Cắt tỉa",
-//       total: 15,
-//       date: "2025-11-09",
-//       status: "confirmed",
-//     },
-//     {
-//       id: 103,
-//       customer: "Lê Văn C",
-//       service: "Kiểm soát sâu bệnh",
-//       total: 8,
-//       date: "2025-11-10",
-//       status: "completed",
-//     },
-//   ]);
-
-//   const statusColor = (status) => {
-//     switch (status) {
-//       case "pending":
-//         return "bg-yellow-100 text-yellow-700";
-//       case "confirmed":
-//         return "bg-blue-100 text-blue-700";
-//       case "completed":
-//         return "bg-green-100 text-green-700";
-//       case "cancelled":
-//         return "bg-red-100 text-red-700";
-//       default:
-//         return "bg-gray-100 text-gray-700";
-//     }
-//   };
-
-//   const updateStatus = (id, newStatus) => {
-//     setOrders((prev) =>
-//       prev.map((o) => (o.id === id ? { ...o, status: newStatus } : o))
-//     );
-//   };
-
-//   return (
-//     <div className="min-h-screen bg-gray-50 p-6">
-//       <h1 className="text-2xl font-bold text-green-700 mb-6">
-//         Quản lý đơn hàng
-//       </h1>
-
-//       <table className="min-w-full bg-white rounded-lg shadow">
-//         <thead>
-//           <tr className="bg-green-100 text-left">
-//             <th className="p-3">Mã đơn</th>
-//             <th className="p-3">Khách hàng</th>
-//             <th className="p-3">Dịch vụ</th>
-//             <th className="p-3">Tổng ($)</th>
-//             <th className="p-3">Ngày hẹn</th>
-//             <th className="p-3">Trạng thái</th>
-//             <th className="p-3 text-center">Hành động</th>
-//           </tr>
-//         </thead>
-//         <tbody>
-//           {orders.map((order) => (
-//             <tr key={order.id} className="border-b hover:bg-green-50">
-//               <td className="p-3">{order.id}</td>
-//               <td className="p-3">{order.customer}</td>
-//               <td className="p-3">{order.service}</td>
-//               <td className="p-3">{order.total.toFixed(2)}</td>
-//               <td className="p-3">{order.date}</td>
-//               <td className="p-3">
-//                 <span
-//                   className={`px-3 py-1 rounded-full text-sm font-medium ${statusColor(
-//                     order.status
-//                   )}`}
-//                 >
-//                   {order.status}
-//                 </span>
-//               </td>
-//               <td className="p-3 text-center space-x-2">
-//                 {order.status === "pending" && (
-//                   <>
-//                     <button
-//                       onClick={() => updateStatus(order.id, "confirmed")}
-//                       className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700"
-//                     >
-//                       Duyệt
-//                     </button>
-//                     <button
-//                       onClick={() => updateStatus(order.id, "cancelled")}
-//                       className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
-//                     >
-//                       Hủy
-//                     </button>
-//                   </>
-//                 )}
-//                 {order.status === "confirmed" && (
-//                   <button
-//                     onClick={() => updateStatus(order.id, "completed")}
-//                     className="bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700"
-//                   >
-//                     Hoàn thành
-//                   </button>
-//                 )}
-//                 <button
-//                   className="text-green-700 underline hover:text-green-900"
-//                   onClick={() => alert(`Xem chi tiết đơn ${order.id}`)}
-//                 >
-//                   Xem
-//                 </button>
-//               </td>
-//             </tr>
-//           ))}
-//         </tbody>
-//       </table>
-//     </div>
-//   );
-// }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { useEffect, useState } from "react";
 import api from "../../api/api";
+import Modal from "../../components/ui/Modal";
+
+const STATUS_OPTIONS = [
+  { en: "pending", vn: "Chờ xác nhận" },
+  { en: "confirmed", vn: "Đã nhận" },
+  { en: "moving", vn: "Đang di chuyển" },
+  { en: "caring", vn: "Đang chăm" },
+  { en: "completed", vn: "Hoàn tất" },
+  { en: "cancelled", vn: "Đã hủy" },
+];
 
 export default function OrdersManagement() {
   const [orders, setOrders] = useState([]);
+  const [selected, setSelected] = useState(null);
+
+  const load = async () => {
+    const res = await api.get("/admin/orders");
+    setOrders(Array.isArray(res.data) ? res.data : []);
+  };
 
   useEffect(() => {
-    api.get("/admin/orders")
-      .then((res) => setOrders(res.data))
-      .catch((err) => console.error("Failed to load orders:", err));
+    load().catch(console.error);
   }, []);
 
   const updateStatus = async (id, newStatus) => {
     try {
       await api.put(`/admin/orders/${id}`, { status: newStatus });
-      setOrders((prev) =>
-        prev.map((o) => (o.id === id ? { ...o, status: newStatus } : o))
-      );
+      load();
     } catch (err) {
       console.error("Failed to update status:", err);
+      alert("Update status failed");
+    }
+  };
+
+  const assignStaff = async (orderId) => {
+    const staffId = prompt("Nhập staff_id để gán:");
+    if (!staffId) return;
+    try {
+      await api.post("/assignments", {
+        order_id: orderId,
+        staff_id: Number(staffId),
+      });
+      alert("Gán staff thành công!");
+      load();
+    } catch (err) {
+      console.error(err);
+      alert(err.response?.data?.message || "Gán staff thất bại");
     }
   };
 
@@ -196,71 +56,88 @@ export default function OrdersManagement() {
 
       <table className="min-w-full bg-white rounded-lg shadow">
         <thead>
-          <tr className="bg-green-100">
-            <th className="p-3">Mã Đơn</th>
+          <tr className="bg-green-100 text-left">
+            <th className="p-3">Mã đơn</th>
             <th className="p-3">Khách hàng</th>
             <th className="p-3">Dịch vụ</th>
-            <th className="p-3">Tổng ($)</th>
             <th className="p-3">Ngày hẹn</th>
+            <th className="p-3">Địa chỉ</th>
+            <th className="p-3">SĐT</th>
+            <th className="p-3">Tổng ($)</th>
             <th className="p-3">Trạng thái</th>
-            <th className="p-3">Hành động</th>
+            <th className="p-3 text-center">Hành động</th>
+            <th className="p-3 text-center">Chi tiết</th>
           </tr>
         </thead>
 
         <tbody>
-          {orders.map((order) => (
-            <tr key={order.id} className="border-b hover:bg-green-50">
-              <td className="p-3">{order.id}</td>
-              <td className="p-3">{order.customer_name}</td>
-              <td className="p-3">{order.service_name}</td>
-              <td className="p-3">${order.total}</td>
-              <td className="p-3">{order.date}</td>
+          {orders.map((o) => (
+            <tr key={o.id} className="border-b hover:bg-green-50">
+              <td className="p-3">{o.id}</td>
+              <td className="p-3">{o.customer_name}</td>
+              <td className="p-3">{o.service_name}</td>
+              <td className="p-3">{new Date(o.date).toLocaleString()}</td>
+              <td className="p-3">{o.address}</td>
+              <td className="p-3">{o.phone || "—"}</td>
+              <td className="p-3">${Number(o.total).toFixed(2)}</td>
+              <td className="p-3 text-green-700">{o.status_vn}</td>
 
-              <td className="p-3">
-                <span className={`px-3 py-1 rounded-full text-sm ${statusColor(order.status)}`}>
-                  {order.status}
-                </span>
+              <td className="p-3 text-center space-x-2">
+                <button
+                  onClick={() => assignStaff(o.id)}
+                  className="bg-purple-600 text-white px-3 py-1 rounded"
+                >
+                  Gán
+                </button>
+
+                <select
+                  className="border p-1 rounded"
+                  value={o.status}
+                  onChange={(e) => updateStatus(o.id, e.target.value)}
+                >
+                  {STATUS_OPTIONS.map((s) => (
+                    <option key={s.en} value={s.en}>
+                      {s.vn}
+                    </option>
+                  ))}
+                </select>
               </td>
 
-              <td className="p-3 space-x-2 text-center">
-                {order.status === "pending" && (
-                  <>
-                    <button
-                      onClick={() => updateStatus(order.id, "confirmed")}
-                      className="bg-blue-600 text-white px-3 py-1 rounded"
-                    >Duyệt</button>
-
-                    <button
-                      onClick={() => updateStatus(order.id, "cancelled")}
-                      className="bg-red-600 text-white px-3 py-1 rounded"
-                    >Hủy</button>
-                  </>
-                )}
-
-                {order.status === "confirmed" && (
-                  <button
-                    onClick={() => updateStatus(order.id, "completed")}
-                    className="bg-green-600 text-white px-3 py-1 rounded"
-                  >
-                    Hoàn thành
-                  </button>
-                )}
+              <td className="p-3 text-center">
+                <button
+                  onClick={() => setSelected(o)}
+                  className="bg-blue-600 text-white px-3 py-1 rounded"
+                >
+                  Xem
+                </button>
               </td>
             </tr>
           ))}
         </tbody>
-
       </table>
+
+      {/* Modal chi tiết admin */}
+      <Modal
+        isOpen={!!selected}
+        onClose={() => setSelected(null)}
+        title={`Chi tiết đơn #${selected?.id}`}
+      >
+        {selected && (
+          <div className="space-y-2">
+            <p><strong>Mã đơn:</strong> {selected.id}</p>
+            <p><strong>Khách hàng:</strong> {selected.customer_name}</p>
+            <p><strong>Dịch vụ:</strong> {selected.service_name}</p>
+            <p><strong>Cây:</strong> {selected.plant_name}</p>
+            <p><strong>Ngày hẹn:</strong> {new Date(selected.date).toLocaleString()}</p>
+            <p><strong>Địa chỉ:</strong> {selected.address}</p>
+            <p><strong>SĐT:</strong> {selected.phone || "—"}</p>
+            <p><strong>Tổng tiền:</strong> ${Number(selected.total).toFixed(2)}</p>
+            <p><strong>Trạng thái:</strong> {selected.status_vn}</p>
+            <p><strong>Voucher:</strong> {selected.voucher_code || "—"}</p>
+            <p><strong>Ghi chú:</strong> {selected.note || "—"}</p>
+          </div>
+        )}
+      </Modal>
     </div>
   );
-}
-
-function statusColor(status) {
-  switch (status) {
-    case "pending": return "bg-yellow-100 text-yellow-700";
-    case "confirmed": return "bg-blue-100 text-blue-700";
-    case "completed": return "bg-green-100 text-green-700";
-    case "cancelled": return "bg-red-100 text-red-700";
-    default: return "bg-gray-100 text-gray-700";
-  }
 }
