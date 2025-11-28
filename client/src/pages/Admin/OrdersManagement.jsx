@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import api from "../../api/api";
 import Modal from "../../components/ui/Modal";
+import SortSearchFilterBar from "../../components/common/SortSearchFilterBar";
 
 const STATUS_OPTIONS = [
   { en: "pending", vn: "Chờ xác nhận" },
@@ -15,13 +16,34 @@ export default function OrdersManagement() {
   const [orders, setOrders] = useState([]);
   const [selected, setSelected] = useState(null);
 
+  // sort/search/filter
+  const [sortBy, setSortBy] = useState("newest");
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+
+  // staff assign modal
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [assignOrderId, setAssignOrderId] = useState(null);
+  const [staffList, setStaffList] = useState([]);
+  const [staffSearch, setStaffSearch] = useState("");
+
   const load = async () => {
     const res = await api.get("/admin/orders");
     setOrders(Array.isArray(res.data) ? res.data : []);
   };
 
+  const loadStaff = async () => {
+    // ✅ giả định server có endpoint này
+    const res = await api.get("/admin/staff");
+    setStaffList(Array.isArray(res.data) ? res.data : []);
+  };
+
   useEffect(() => {
     load().catch(console.error);
+
+    // ✅ auto refresh (req11,14,19)
+    const interval = setInterval(() => load().catch(() => {}), 5000);
+    return () => clearInterval(interval);
   }, []);
 
   const updateStatus = async (id, newStatus) => {
@@ -34,15 +56,22 @@ export default function OrdersManagement() {
     }
   };
 
-  const assignStaff = async (orderId) => {
-    const staffId = prompt("Nhập staff_id để gán:");
-    if (!staffId) return;
+  const openAssign = async (orderId) => {
+    setAssignOrderId(orderId);
+    setAssignOpen(true);
+    setStaffSearch("");
+    await loadStaff();
+  };
+
+  const chooseStaff = async (staffId) => {
     try {
       await api.post("/assignments", {
-        order_id: orderId,
+        order_id: assignOrderId,
         staff_id: Number(staffId),
       });
       alert("Gán staff thành công!");
+      setAssignOpen(false);
+      setAssignOrderId(null);
       load();
     } catch (err) {
       console.error(err);
@@ -50,9 +79,82 @@ export default function OrdersManagement() {
     }
   };
 
+  const statusOptions = useMemo(() => {
+    const set = new Set(orders.map(o => o.status_vn || o.status));
+    return Array.from(set);
+  }, [orders]);
+
+  const filteredSortedOrders = useMemo(() => {
+    let list = [...orders];
+
+    if (statusFilter !== "all") {
+      list = list.filter(o => (o.status_vn || o.status || "").toLowerCase() === statusFilter.toLowerCase());
+    }
+
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(o =>
+        String(o.id).includes(q) ||
+        (o.service_name || o.services || "").toLowerCase().includes(q) ||
+        (o.customer_name || "").toLowerCase().includes(q) ||
+        (o.address || "").toLowerCase().includes(q) ||
+        (o.phone || o.customer_phone || "").toLowerCase().includes(q)
+      );
+    }
+
+    const getDate = (o) => new Date(o.date || o.scheduled_date || 0).getTime();
+    const getTotal = (o) => Number(o.total || o.total_price || 0);
+    const getService = (o) => (o.service_name || o.services || "").toLowerCase();
+    const getCustomer = (o) => (o.customer_name || "").toLowerCase();
+
+    switch (sortBy) {
+      case "customer_asc": list.sort((a,b)=>getCustomer(a).localeCompare(getCustomer(b))); break;
+      case "customer_desc": list.sort((a,b)=>getCustomer(b).localeCompare(getCustomer(a))); break;
+      case "date_asc": list.sort((a,b)=>getDate(a)-getDate(b)); break;
+      case "date_desc": list.sort((a,b)=>getDate(b)-getDate(a)); break;
+      case "id_asc": list.sort((a,b)=>a.id-b.id); break;
+      case "id_desc": list.sort((a,b)=>b.id-a.id); break;
+      case "service_asc": list.sort((a,b)=>getService(a).localeCompare(getService(b))); break;
+      case "service_desc": list.sort((a,b)=>getService(b).localeCompare(getService(a))); break;
+      case "total_asc": list.sort((a,b)=>getTotal(a)-getTotal(b)); break;
+      case "total_desc": list.sort((a,b)=>getTotal(b)-getTotal(a)); break;
+      case "oldest": list.sort((a,b)=>getDate(a)-getDate(b)); break;
+      case "newest":
+      default: list.sort((a,b)=>getDate(b)-getDate(a)); break;
+    }
+
+    return list;
+  }, [orders, sortBy, search, statusFilter]);
+
+  const canAssignByStatus = (statusEn) => {
+    // req12: action thay đổi theo status
+    return statusEn === "pending" || statusEn === "confirmed";
+  };
+
+  const filteredStaff = useMemo(() => {
+    if (!staffSearch.trim()) return staffList;
+    const q = staffSearch.toLowerCase();
+    return staffList.filter(s =>
+      String(s.id).includes(q) ||
+      (s.full_name || s.name || "").toLowerCase().includes(q) ||
+      (s.phone || "").toLowerCase().includes(q)
+    );
+  }, [staffList, staffSearch]);
+
   return (
     <div className="min-h-screen bg-gray-50 p-6">
-      <h1 className="text-2xl font-bold text-green-700 mb-6">Quản lý đơn hàng</h1>
+      <h1 className="text-2xl font-bold text-green-700 mb-4">Quản lý đơn hàng</h1>
+
+      <SortSearchFilterBar
+        sortValue={sortBy}
+        onSortChange={setSortBy}
+        searchValue={search}
+        onSearchChange={setSearch}
+        statusValue={statusFilter}
+        onStatusChange={setStatusFilter}
+        statusOptions={statusOptions}
+        searchPlaceholder="Tìm theo mã / dịch vụ / khách / địa chỉ / SĐT"
+      />
 
       <table className="min-w-full bg-white rounded-lg shadow">
         <thead>
@@ -71,24 +173,28 @@ export default function OrdersManagement() {
         </thead>
 
         <tbody>
-          {orders.map((o) => (
+          {filteredSortedOrders.map((o) => (
             <tr key={o.id} className="border-b hover:bg-green-50">
               <td className="p-3">{o.id}</td>
               <td className="p-3">{o.customer_name}</td>
               <td className="p-3">{o.service_name}</td>
               <td className="p-3">{new Date(o.date).toLocaleString()}</td>
               <td className="p-3">{o.address}</td>
-              <td className="p-3">{o.phone || "—"}</td>
+              <td className="p-3">{o.phone || o.customer_phone || "—"}</td>
               <td className="p-3">${Number(o.total).toFixed(2)}</td>
               <td className="p-3 text-green-700">{o.status_vn}</td>
 
               <td className="p-3 text-center space-x-2">
-                <button
-                  onClick={() => assignStaff(o.id)}
-                  className="bg-purple-600 text-white px-3 py-1 rounded"
-                >
-                  Gán
-                </button>
+                {canAssignByStatus(o.status) ? (
+                  <button
+                    onClick={() => openAssign(o.id)}
+                    className="bg-purple-600 text-white px-3 py-1 rounded"
+                  >
+                    Gán
+                  </button>
+                ) : (
+                  <span className="text-gray-400 text-sm">—</span>
+                )}
 
                 <select
                   className="border p-1 rounded"
@@ -116,7 +222,6 @@ export default function OrdersManagement() {
         </tbody>
       </table>
 
-      {/* Modal chi tiết admin */}
       <Modal
         isOpen={!!selected}
         onClose={() => setSelected(null)}
@@ -137,6 +242,40 @@ export default function OrdersManagement() {
             <p><strong>Ghi chú:</strong> {selected.note || "—"}</p>
           </div>
         )}
+      </Modal>
+
+      {/* ✅ Assign staff modal (req18) */}
+      <Modal
+        isOpen={assignOpen}
+        onClose={() => setAssignOpen(false)}
+        title={`Gán nhân viên cho đơn #${assignOrderId}`}
+      >
+        <div className="space-y-3">
+          <input
+            className="border p-2 rounded w-full"
+            placeholder="Tìm staff theo ID / tên / SĐT"
+            value={staffSearch}
+            onChange={(e)=>setStaffSearch(e.target.value)}
+          />
+
+          <div className="max-h-80 overflow-auto space-y-2">
+            {filteredStaff.map(s => (
+              <div key={s.id} className="border rounded p-2 flex justify-between items-center">
+                <div>
+                  <div className="font-semibold">#{s.id} — {s.full_name || s.name}</div>
+                  <div className="text-sm text-gray-600">SĐT: {s.phone || "—"}</div>
+                </div>
+                <button
+                  onClick={() => chooseStaff(s.id)}
+                  className="px-3 py-1 bg-green-600 text-white rounded"
+                >
+                  Chọn
+                </button>
+              </div>
+            ))}
+            {filteredStaff.length === 0 && <p className="text-gray-500">Không có staff phù hợp.</p>}
+          </div>
+        </div>
       </Modal>
     </div>
   );

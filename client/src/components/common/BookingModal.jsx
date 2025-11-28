@@ -17,7 +17,7 @@ export default function BookingModal({
   );
   const [plants, setPlants] = useState([]);
   const [form, setForm] = useState({
-    name: "",
+    name: "", // tên người đặt thực tế
     phone: "",
     date: "",
     address: "",
@@ -96,6 +96,7 @@ export default function BookingModal({
         price: s.price,
       }));
 
+      // ✅ FIX: gửi customer_name = form.name
       await api.post("/orders", {
         services: payloadServices,
         scheduled_date: form.date,
@@ -103,7 +104,10 @@ export default function BookingModal({
         note: noteFinal,
         plant_id: form.plant_id || null,
         voucher_code: form.voucher_code?.trim() || null,
-        phone: form.phone?.trim() || null, // ✅ gửi phone lên server
+        phone: form.phone?.trim() || null,
+
+        // ⭐ đây là dòng sửa quan trọng
+        customer_name: form.name.trim(),
       });
 
       onBooked && onBooked();
@@ -183,7 +187,6 @@ export default function BookingModal({
               required
             />
 
-            {/* ✅ phone có thể trống -> server fallback */}
             <input
               name="phone"
               placeholder="Số điện thoại (có thể để trống)"

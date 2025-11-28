@@ -4,7 +4,7 @@ import { useParams } from "react-router-dom";
 import api from "../../api/api";
 
 export default function VisitDetail() {
-  const { id } = useParams(); // order_id
+  const { id } = useParams();
   const [task, setTask] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -23,6 +23,8 @@ export default function VisitDetail() {
 
   useEffect(() => {
     load();
+    const interval = setInterval(() => load().catch(() => {}), 5000);
+    return () => clearInterval(interval);
   }, [id]);
 
   if (loading) return <p>Đang tải...</p>;
@@ -43,9 +45,7 @@ export default function VisitDetail() {
     load();
   };
 
-  // ✅ ưu tiên status_vn để đồng bộ backend
   const statusVN = task.status_vn || task.status;
-
   const canMove = statusVN === "Đã nhận";
   const canCare = statusVN === "Đang di chuyển";
   const canComplete = statusVN === "Đang chăm";
@@ -59,11 +59,11 @@ export default function VisitDetail() {
       <div className="bg-white p-6 rounded-lg shadow-lg space-y-2">
         <p><strong>Khách hàng:</strong> {task.customer_name}</p>
         <p><strong>Địa chỉ:</strong> {task.address}</p>
-        <p><strong>Số điện thoại:</strong> {task.phone || "—"}</p>
+        <p><strong>Số điện thoại:</strong> {task.phone || task.customer_phone || "—"}</p>
         <p><strong>Ngày thực hiện:</strong> {new Date(task.scheduled_date).toLocaleString()}</p>
         <p><strong>Dịch vụ:</strong> {task.services}</p>
-        <p><strong>Cây:</strong> {task.plant_name || "—"}</p>
-        <p><strong>Voucher:</strong> {task.voucher_code || "—"}</p>
+        <p><strong>Cây:</strong> {task.plant_name || task.plant || "—"}</p>
+        <p><strong>Voucher:</strong> {task.voucher_code || task.voucher || "—"}</p>
         <p><strong>Ghi chú:</strong> {task.note || "—"}</p>
         <p>
           <strong>Trạng thái:</strong>{" "}

@@ -97,6 +97,33 @@ export const listServices = async (req, res) => {
 };
 
 /**
+ * ✅ NEW: GET /api/admin/staff (req18 modal gán staff)
+ */
+export const listStaff = async (req, res) => {
+  try {
+    const q = `
+      SELECT 
+        st.id,
+        st.specialization,
+        st.availability,
+        st.rating,
+        u.full_name,
+        u.phone,
+        u.email
+      FROM staff st
+      JOIN users u ON u.id = st.user_id
+      ORDER BY st.id ASC
+      LIMIT 1000
+    `;
+    const r = await pool.query(q);
+    res.json(r.rows);
+  } catch (err) {
+    console.error("listStaff error:", err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+/**
  * GET /api/admin/orders
  * ✅ trả đầy đủ info cho UI admin
  */
@@ -106,7 +133,7 @@ export const listOrders = async (req, res) => {
       SELECT
         o.id,
         o.user_id,
-        u.full_name AS customer_name,
+        COALESCE(o.customer_name, u.full_name) AS customer_name,
         o.status,
         o.status_vn,
         o.total_price AS total,
@@ -123,7 +150,7 @@ export const listOrders = async (req, res) => {
       LEFT JOIN services s ON oi.service_id = s.id
       LEFT JOIN order_plants op ON op.order_id=o.id
       LEFT JOIN plants p ON p.id=op.plant_id
-      GROUP BY o.id, o.user_id, u.full_name, o.status, o.status_vn, o.total_price, o.scheduled_date, o.address, o.phone, o.note, o.voucher_code, p.name
+      GROUP BY o.id, o.user_id, u.full_name, o.customer_name, o.status, o.status_vn, o.total_price, o.scheduled_date, o.address, o.phone, o.note, o.voucher_code, p.name
       ORDER BY o.scheduled_date DESC
       LIMIT 1000
     `;
@@ -172,6 +199,20 @@ export const updateOrderStatus = async (req, res) => {
     await pool.query(
       "UPDATE orders SET status=$1, status_vn=$2, updated_at=NOW() WHERE id=$3",
       [status, vn, orderId]
+    );
+
+    // notify customer + staff
+    await pool.query(
+      `INSERT INTO notifications (user_id, title, message, is_read, created_at)
+       VALUES ($1,'Cập nhật đơn hàng',$2,false,NOW())`,
+      [check.rows[0].user_id, `Đơn #${orderId} chuyển trạng thái: ${vn}`]
+    );
+    await pool.query(
+      `INSERT INTO notifications (user_id, title, message, is_read, created_at)
+       SELECT st.user_id, 'Cập nhật đơn hàng', $2, false, NOW()
+       FROM assignments a JOIN staff st ON a.staff_id=st.id
+       WHERE a.order_id=$1`,
+      [orderId, `Đơn #${orderId} chuyển trạng thái: ${vn}`]
     );
 
     return res.json({ message: "Order status updated", status, status_vn: vn });

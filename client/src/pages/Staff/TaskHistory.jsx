@@ -4,10 +4,17 @@ import api from "../../api/api";
 export default function TaskHistory() {
   const [history, setHistory] = useState([]);
 
+  const load = async () => {
+    const res = await api.get("/staff/tasks/history");
+    setHistory(Array.isArray(res.data) ? res.data : []);
+  };
+
   useEffect(() => {
-    api.get("/staff/tasks/history")
-      .then((res) => setHistory(Array.isArray(res.data) ? res.data : []))
-      .catch(console.error);
+    load().catch(console.error);
+
+    // ✅ auto refresh để thấy ngay sau hoàn tất (req15)
+    const interval = setInterval(() => load().catch(() => {}), 5000);
+    return () => clearInterval(interval);
   }, []);
 
   return (
@@ -36,9 +43,9 @@ export default function TaskHistory() {
                 <td className="p-3">{o.customer_name}</td>
                 <td className="p-3">{new Date(o.scheduled_date).toLocaleString()}</td>
                 <td className="p-3">{o.address}</td>
-                <td className="p-3">{o.phone || "—"}</td>
+                <td className="p-3">{o.phone || o.customer_phone || "—"}</td>
                 <td className="p-3">${o.total_price}</td>
-                <td className="p-3 text-green-700">{o.status_vn}</td>
+                <td className="p-3 text-green-700">{o.status_vn || o.status}</td>
               </tr>
             ))}
           </tbody>

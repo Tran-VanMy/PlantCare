@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+// client/src/pages/Customer/CustomerDashboard.jsx
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../../api/api";
 import AddPlantModal from "../../components/common/AddPlantModal";
 import Modal from "../../components/ui/Modal";
+import SortSearchFilterBar from "../../components/common/SortSearchFilterBar";
 
 export default function CustomerDashboard() {
   const [user, setUser] = useState(null);
@@ -10,6 +12,11 @@ export default function CustomerDashboard() {
   const [orders, setOrders] = useState([]);
   const [showAddPlant, setShowAddPlant] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
+
+  // sort/search/filter states
+  const [sortBy, setSortBy] = useState("newest");
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
 
   const fetchData = async (customerId) => {
     const plantsRes = await api.get(`/customers/${customerId}/plants`);
@@ -30,6 +37,13 @@ export default function CustomerDashboard() {
     if (!storedUser) return;
     setUser(storedUser);
     fetchData(storedUser.id).catch(console.error);
+
+    // ✅ auto refresh để sync realtime (req9,11,13,14,19)
+    const interval = setInterval(() => {
+      fetchData(storedUser.id).catch(() => {});
+    }, 5000);
+
+    return () => clearInterval(interval);
   }, []);
 
   const cancelOrder = async (id) => {
@@ -45,6 +59,55 @@ export default function CustomerDashboard() {
     setStats((s) => ({ ...s, plants: cnt }));
   };
 
+  const statusOptions = useMemo(() => {
+    const set = new Set(orders.map(o => o.status));
+    return Array.from(set);
+  }, [orders]);
+
+  const filteredSortedOrders = useMemo(() => {
+    let list = [...orders];
+
+    // filter status
+    if (statusFilter !== "all") {
+      list = list.filter(o => (o.status || "").toLowerCase() === statusFilter.toLowerCase());
+    }
+
+    // search by (mã đơn/tên dịch vụ/cây/địa chỉ/sdt)
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(o => {
+        return (
+          String(o.id).includes(q) ||
+          (o.service || "").toLowerCase().includes(q) ||
+          (o.plant || "").toLowerCase().includes(q) ||
+          (o.address || "").toLowerCase().includes(q) ||
+          (o.phone || "").toLowerCase().includes(q)
+        );
+      });
+    }
+
+    // sort
+    const getDate = (o) => new Date(o.date || o.scheduled_date || o.created_at || 0).getTime();
+    const getTotal = (o) => Number(o.total || o.total_price || 0);
+    const getService = (o) => (o.service || "").toLowerCase();
+
+    switch (sortBy) {
+      case "date_asc": list.sort((a,b)=>getDate(a)-getDate(b)); break;
+      case "date_desc": list.sort((a,b)=>getDate(b)-getDate(a)); break;
+      case "id_asc": list.sort((a,b)=>a.id-b.id); break;
+      case "id_desc": list.sort((a,b)=>b.id-a.id); break;
+      case "service_asc": list.sort((a,b)=>getService(a).localeCompare(getService(b))); break;
+      case "service_desc": list.sort((a,b)=>getService(b).localeCompare(getService(a))); break;
+      case "total_asc": list.sort((a,b)=>getTotal(a)-getTotal(b)); break;
+      case "total_desc": list.sort((a,b)=>getTotal(b)-getTotal(a)); break;
+      case "oldest": list.sort((a,b)=>getDate(a)-getDate(b)); break;
+      case "newest":
+      default: list.sort((a,b)=>getDate(b)-getDate(a)); break;
+    }
+
+    return list;
+  }, [orders, sortBy, search, statusFilter]);
+
   if (!user) return <p>Đang tải dữ liệu...</p>;
 
   return (
@@ -55,18 +118,29 @@ export default function CustomerDashboard() {
         </h1>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <Stat label="Cây của bạn" value={stats.plants} />
         <Stat label="Tổng đơn hàng" value={stats.orders} />
         <Stat label="Tổng chi tiêu ($)" value={Number(stats.totalSpent).toFixed(2)} />
       </div>
 
-      {/* ✅ bảng full info */}
+      {/* ✅ Đơn hàng của bạn */}
       <section className="bg-white rounded-lg shadow p-6 mb-6">
-        <h2 className="text-xl font-semibold text-green-700 mb-4">Đơn hàng của bạn</h2>
+        <h2 className="text-xl font-semibold text-green-700 mb-3">Đơn hàng của bạn</h2>
 
-        {orders.length === 0 ? (
-          <p className="text-gray-500">Bạn chưa có đơn hàng nào.</p>
+        <SortSearchFilterBar
+          sortValue={sortBy}
+          onSortChange={setSortBy}
+          searchValue={search}
+          onSearchChange={setSearch}
+          statusValue={statusFilter}
+          onStatusChange={setStatusFilter}
+          statusOptions={statusOptions}
+          searchPlaceholder="Tìm theo mã đơn / dịch vụ / cây / địa chỉ / SĐT"
+        />
+
+        {filteredSortedOrders.length === 0 ? (
+          <p className="text-gray-500">Không có đơn phù hợp.</p>
         ) : (
           <table className="min-w-full">
             <thead>
@@ -85,7 +159,7 @@ export default function CustomerDashboard() {
             </thead>
 
             <tbody>
-              {orders.map((o) => (
+              {filteredSortedOrders.map((o) => (
                 <tr key={o.id} className="border-b hover:bg-green-50">
                   <td className="p-3">{o.id}</td>
                   <td className="p-3">{o.service}</td>
@@ -138,7 +212,6 @@ export default function CustomerDashboard() {
         </Link>
       </div>
 
-      {/* modal chi tiết */}
       <Modal
         isOpen={!!selectedOrder}
         onClose={() => setSelectedOrder(null)}
@@ -147,6 +220,7 @@ export default function CustomerDashboard() {
         {selectedOrder && (
           <div className="space-y-2">
             <p><strong>Mã đơn:</strong> {selectedOrder.id}</p>
+            <p><strong>Khách hàng:</strong> {selectedOrder.customer_name}</p>
             <p><strong>Dịch vụ:</strong> {selectedOrder.service}</p>
             <p><strong>Cây:</strong> {selectedOrder.plant}</p>
             <p><strong>Ngày hẹn:</strong> {new Date(selectedOrder.date).toLocaleString()}</p>

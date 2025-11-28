@@ -55,8 +55,16 @@ export const createOrder = async (req, res) => {
     note,
     plant_id,
     voucher_code,
-    phone, // ✅ phone nhập lúc book
+    phone,
   } = req.body;
+
+  // ✅ FIX req16: nhận nhiều key tên khách từ client
+  const rawCustomerName =
+    req.body.customer_name ??
+    req.body.customerName ??       // camelCase
+    req.body.book_customer_name ?? // optional khác (nếu bạn từng đặt)
+    req.body.full_name ??          // fallback key phổ biến
+    req.body.name;                 // fallback key phổ biến
 
   if (!Array.isArray(services) || services.length === 0) {
     return res
@@ -68,13 +76,22 @@ export const createOrder = async (req, res) => {
   try {
     await client.query("BEGIN");
 
-    // lấy thông tin user để fallback phone
+    // lấy thông tin user để fallback phone + full_name
     const userRes = await client.query(
-      `SELECT phone FROM users WHERE id=$1 LIMIT 1`,
+      `SELECT phone, full_name FROM users WHERE id=$1 LIMIT 1`,
       [userId]
     );
     const userPhone = userRes.rowCount ? userRes.rows[0].phone : null;
+    const userFullName = userRes.rowCount ? userRes.rows[0].full_name : null;
+
     const finalPhone = phone?.trim() || userPhone || null;
+
+    // ✅ nếu khách nhập tên khi book => ưu tiên tên đó
+    // nếu không có => fallback tên tài khoản
+    const finalCustomerName =
+      (typeof rawCustomerName === "string" && rawCustomerName.trim())
+        ? rawCustomerName.trim()
+        : (userFullName || null);
 
     // kiểm tra voucher nếu có
     let voucher = null;
@@ -97,11 +114,12 @@ export const createOrder = async (req, res) => {
     }
 
     const orderRes = await client.query(
-      `INSERT INTO orders (user_id, scheduled_date, address, note, phone, voucher_code, status, status_vn, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,NOW(),NOW())
+      `INSERT INTO orders (user_id, customer_name, scheduled_date, address, note, phone, voucher_code, status, status_vn, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'pending',$8,NOW(),NOW())
        RETURNING *`,
       [
         userId,
+        finalCustomerName,
         scheduled_date || null,
         address || null,
         note || null,
@@ -189,6 +207,7 @@ export const createOrder = async (req, res) => {
       order_id: order.id,
       total,
       phone: finalPhone,
+      customer_name: finalCustomerName,
       voucher_awarded: newVoucher,
     });
   } catch (err) {
@@ -220,15 +239,17 @@ export const getCustomerOrders = async (req, res) => {
         o.note,
         o.phone,
         o.voucher_code,
+        COALESCE(o.customer_name, u.full_name) AS customer_name,
         STRING_AGG(s.name, ', ') AS service_name,
         p.name AS plant_name
       FROM orders o
+      LEFT JOIN users u ON u.id = o.user_id
       LEFT JOIN order_items oi ON oi.order_id = o.id
       LEFT JOIN services s ON s.id = oi.service_id
       LEFT JOIN order_plants op ON op.order_id=o.id
       LEFT JOIN plants p ON p.id=op.plant_id
       WHERE o.user_id = $1
-      GROUP BY o.id, o.total_price, o.status_vn, o.status, o.scheduled_date, o.address, o.note, o.phone, o.voucher_code, p.name
+      GROUP BY o.id, o.total_price, o.status_vn, o.status, o.scheduled_date, o.address, o.note, o.phone, o.voucher_code, p.name, u.full_name
       ORDER BY o.scheduled_date DESC
       LIMIT 1000
     `;
@@ -247,6 +268,7 @@ export const getCustomerOrders = async (req, res) => {
         voucher_code: row.voucher_code,
         status: row.status,
         status_en: row.status_en,
+        customer_name: row.customer_name,
       }))
     );
   } catch (err) {
@@ -283,6 +305,14 @@ export const cancelOrderByCustomer = async (req, res) => {
       `INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, note)
        VALUES ($1,$2,$3,$4,'customer cancel')`,
       [orderId, order.status_vn, STATUS.CANCELLED, userId]
+    );
+
+    // notify staff + admin để sync nhanh
+    await pool.query(
+      `INSERT INTO notifications (user_id, title, message, is_read, created_at)
+       SELECT u.id, 'Đơn bị hủy', $2, false, NOW()
+       FROM users u WHERE u.role_id IN (1,2)`,
+      [orderId, `Đơn #${orderId} đã bị khách hủy.`]
     );
 
     res.json({ message: "Cancelled" });

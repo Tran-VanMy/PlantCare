@@ -13,12 +13,22 @@ import {
   completeOrder,
   taskHistory,
   incomeStats,
+  cancelOrderByStaff,
 } from "../controllers/staff.controller.js";
 
 const router = express.Router();
 
 // Các đơn chưa ai nhận
-router.get("/orders/available", verifyToken, requireRole(2), listAvailableOrders);
+router.get(
+  "/orders/available",
+  verifyToken,
+  requireRole(2),
+  listAvailableOrders
+);
+
+// ✅ History & stats (PHẢI để trước /tasks/:id)
+router.get("/tasks/history", verifyToken, requireRole(2), taskHistory);
+router.get("/stats/income", verifyToken, requireRole(2), incomeStats);
 
 // Nhiệm vụ của staff (đơn đã nhận)
 router.get("/tasks", verifyToken, requireRole(2), listMyTasks);
@@ -31,8 +41,7 @@ router.put("/orders/:id/move", verifyToken, requireRole(2), moveOrder);
 router.put("/orders/:id/care", verifyToken, requireRole(2), startCareOrder);
 router.put("/orders/:id/complete", verifyToken, requireRole(2), completeOrder);
 
-// History & stats
-router.get("/tasks/history", verifyToken, requireRole(2), taskHistory);
-router.get("/stats/income", verifyToken, requireRole(2), incomeStats);
+// staff cancel
+router.put("/orders/:id/cancel", verifyToken, requireRole(2), cancelOrderByStaff);
 
 export default router;
