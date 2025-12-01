@@ -80,7 +80,73 @@ export const listUsers = async (req, res) => {
 };
 
 /**
- * ✅ NEW: DELETE /api/admin/users/:id
+ * ✅ NEW: PUT /api/admin/users/:id/role
+ * - Admin đổi vai trò cho user
+ * - Không cho admin tự đổi role của chính mình (tránh tự khóa quyền)
+ * body: { role_id }
+ */
+export const updateUserRole = async (req, res) => {
+  const userIdToUpdate = Number(req.params.id);
+  const { role_id } = req.body;
+
+  if (!userIdToUpdate) {
+    return res.status(400).json({ message: "Invalid user id" });
+  }
+
+  const newRoleId = Number(role_id);
+  if (![1, 2, 3].includes(newRoleId)) {
+    return res.status(400).json({ message: "role_id must be 1 (admin), 2 (staff), or 3 (customer)" });
+  }
+
+  try {
+    // Không cho admin tự đổi role của chính mình
+    if (req.user.id === userIdToUpdate) {
+      return res.status(400).json({ message: "Không thể tự đổi vai trò của tài khoản admin đang đăng nhập." });
+    }
+
+    const checkUser = await pool.query(
+      "SELECT id, role_id FROM users WHERE id=$1",
+      [userIdToUpdate]
+    );
+    if (checkUser.rowCount === 0) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // đảm bảo role tồn tại trong bảng roles
+    const checkRole = await pool.query("SELECT id FROM roles WHERE id=$1", [newRoleId]);
+    if (checkRole.rowCount === 0) {
+      return res.status(400).json({ message: "Role not found in roles table" });
+    }
+
+    await pool.query(
+      "UPDATE users SET role_id=$1, updated_at=NOW() WHERE id=$2",
+      [newRoleId, userIdToUpdate]
+    );
+
+    // Nếu đổi sang staff mà user chưa có record staff -> tạo (giữ logic đồng bộ)
+    if (newRoleId === 2) {
+      const staffCheck = await pool.query(
+        "SELECT id FROM staff WHERE user_id=$1 LIMIT 1",
+        [userIdToUpdate]
+      );
+      if (staffCheck.rowCount === 0) {
+        await pool.query(
+          `INSERT INTO staff (user_id, specialization, availability, rating)
+           VALUES ($1, null, true, 5.0)`,
+          [userIdToUpdate]
+        );
+      }
+    }
+
+    return res.json({ message: "Role updated successfully", user_id: userIdToUpdate, role_id: newRoleId });
+  } catch (err) {
+    console.error("updateUserRole error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+/**
+ * ✅ DELETE /api/admin/users/:id
  * - Không cho admin tự xóa chính mình
  * - Xóa user sẽ cascade plants/orders/... theo FK
  */
@@ -145,7 +211,7 @@ export const listStaff = async (req, res) => {
     const r = await pool.query(q);
     res.json(r.rows);
   } catch (err) {
-    console.error("listStaff error:", err);
+    console.error("listStaff", err);
     res.status(500).json({ error: err.message });
   }
 };
@@ -206,8 +272,6 @@ export const listOrders = async (req, res) => {
 
 /**
  * ✅ NEW: DELETE /api/admin/orders/:id
- * - Xóa order khỏi CSDL
- * - Các bảng con ON DELETE CASCADE sẽ tự xóa theo
  */
 export const deleteOrder = async (req, res) => {
   const orderId = Number(req.params.id);
@@ -249,7 +313,6 @@ export const updateOrderStatus = async (req, res) => {
       [status, vn, orderId]
     );
 
-    // notify customer + staff
     await pool.query(
       `INSERT INTO notifications (user_id, title, message, is_read, created_at)
        VALUES ($1,'Cập nhật đơn hàng',$2,false,NOW())`,
@@ -265,7 +328,7 @@ export const updateOrderStatus = async (req, res) => {
 
     return res.json({ message: "Order status updated", status, status_vn: vn });
   } catch (err) {
-    console.error("updateOrderStatus error:", err);
+    console.error("updateOrderStatus", err);
     return res.status(500).json({ error: err.message });
   }
 };
