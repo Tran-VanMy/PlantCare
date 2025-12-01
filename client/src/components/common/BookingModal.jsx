@@ -15,9 +15,12 @@ export default function BookingModal({
   const [selected, setSelected] = useState(() =>
     singleService ? [{ ...singleService, qty: 1 }] : []
   );
+
   const [plants, setPlants] = useState([]);
+  const [vouchers, setVouchers] = useState([]);
+
   const [form, setForm] = useState({
-    name: "", // tên người đặt thực tế
+    name: "",
     phone: "",
     date: "",
     address: "",
@@ -25,6 +28,7 @@ export default function BookingModal({
     voucher_code: "",
     plant_id: "",
   });
+
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -41,11 +45,21 @@ export default function BookingModal({
   }, [singleService, isOpen]);
 
   useEffect(() => {
+    if (!isOpen) return;
     const user = JSON.parse(localStorage.getItem("user") || "null");
     if (!user) return;
     api.get(`/customers/${user.id}/plants`)
       .then((r) => setPlants(Array.isArray(r.data) ? r.data : []))
       .catch(() => setPlants([]));
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const token = localStorage.getItem("token");
+    if (!token) return setVouchers([]);
+    api.get("/vouchers/me")
+      .then((res) => setVouchers(Array.isArray(res.data) ? res.data : []))
+      .catch(() => setVouchers([]));
   }, [isOpen]);
 
   const toggleService = (s) => {
@@ -96,17 +110,14 @@ export default function BookingModal({
         price: s.price,
       }));
 
-      // ✅ FIX: gửi customer_name = form.name
       await api.post("/orders", {
         services: payloadServices,
         scheduled_date: form.date,
         address: form.address,
         note: noteFinal,
         plant_id: form.plant_id || null,
-        voucher_code: form.voucher_code?.trim() || null,
+        voucher_code: form.voucher_code || null,
         phone: form.phone?.trim() || null,
-
-        // ⭐ đây là dòng sửa quan trọng
         customer_name: form.name.trim(),
       });
 
@@ -130,13 +141,22 @@ export default function BookingModal({
       <div className="relative bg-white rounded-2xl shadow-xl max-w-3xl w-full p-6 z-10">
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-xl font-semibold">Đặt lịch chăm sóc cây</h3>
-          <button onClick={onClose} className="text-gray-600 hover:text-gray-900">✕</button>
+          <button
+            onClick={onClose}
+            className="text-gray-600 hover:text-gray-900"
+          >
+            ✕
+          </button>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-4">
-          <div>
+        {/* ✅ FIX: KHÔNG stretch nữa */}
+        <div className="grid md:grid-cols-2 gap-4 items-start">
+          {/* LEFT: services */}
+          <div className="flex flex-col">
             <h4 className="font-semibold mb-2">Chọn dịch vụ</h4>
-            <div className="space-y-2 max-h-64 overflow-auto pr-2">
+
+            {/* ✅ auto height, chỉ scroll khi quá dài */}
+            <div className="space-y-2 max-h-[420px] overflow-auto pr-2 border rounded-xl p-2">
               {list.map((s) => {
                 const picked = selected.find((x) => x.id === s.id);
                 return (
@@ -153,6 +173,7 @@ export default function BookingModal({
                         ${s.price} • {s.duration_minutes} mins
                       </div>
                     </div>
+
                     <div className="flex items-center gap-2">
                       {!singleService && (
                         <input
@@ -161,11 +182,24 @@ export default function BookingModal({
                           onChange={() => toggleService(s)}
                         />
                       )}
+
                       {picked && (
                         <div className="flex items-center gap-1 ml-2">
-                          <button type="button" onClick={() => changeQty(s.id, -1)} className="px-2">-</button>
+                          <button
+                            type="button"
+                            onClick={() => changeQty(s.id, -1)}
+                            className="px-2"
+                          >
+                            -
+                          </button>
                           <span>{picked.qty}</span>
-                          <button type="button" onClick={() => changeQty(s.id, +1)} className="px-2">+</button>
+                          <button
+                            type="button"
+                            onClick={() => changeQty(s.id, +1)}
+                            className="px-2"
+                          >
+                            +
+                          </button>
                         </div>
                       )}
                     </div>
@@ -175,7 +209,8 @@ export default function BookingModal({
             </div>
           </div>
 
-          <form onSubmit={handleBook} className="space-y-3">
+          {/* RIGHT: form */}
+          <form onSubmit={handleBook} className="space-y-3 flex flex-col">
             <h4 className="font-semibold">Thông tin khách hàng</h4>
 
             <input
@@ -212,13 +247,22 @@ export default function BookingModal({
               onChange={handleChange}
             />
 
-            <input
+            <select
               name="voucher_code"
-              placeholder="Mã giảm giá (nếu có)"
-              className="border p-2 rounded w-full"
+              className="border p-2 rounded w-full bg-white"
               value={form.voucher_code}
               onChange={handleChange}
-            />
+            >
+              <option value="">Chọn mã giảm giá (nếu có)</option>
+              {vouchers
+                .filter((v) => !v.is_used)
+                .map((v) => (
+                  <option key={v.code} value={v.code}>
+                    {v.code} — Giảm {v.discount_percent}% — HSD{" "}
+                    {new Date(v.expires_at).toLocaleDateString()}
+                  </option>
+                ))}
+            </select>
 
             <select
               name="plant_id"
@@ -246,11 +290,19 @@ export default function BookingModal({
               />
             </label>
 
-            <div className="mt-4 flex justify-end gap-2">
-              <button type="button" onClick={onClose} className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300">
+            <div className="mt-auto flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300"
+              >
                 Hủy
               </button>
-              <button type="submit" disabled={loading} className="px-4 py-2 rounded bg-green-600 text-white hover:bg-green-700">
+              <button
+                type="submit"
+                disabled={loading}
+                className="px-4 py-2 rounded bg-green-600 text-white hover:bg-green-700"
+              >
                 {loading ? "Đang xử lý..." : "Đặt lịch"}
               </button>
             </div>

@@ -1,3 +1,4 @@
+// client/src/pages/Admin/UsersManagement.jsx
 import { useEffect, useMemo, useState } from "react";
 import api from "../../api/api";
 import SortSearchFilterBar from "../../components/common/SortSearchFilterBar";
@@ -8,11 +9,27 @@ export default function UsersManagement() {
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
 
+  const load = async () => {
+    const res = await api.get("/admin/users");
+    setUsers(Array.isArray(res.data) ? res.data : []);
+  };
+
   useEffect(() => {
-    api.get("/admin/users")
-      .then((res) => setUsers(Array.isArray(res.data) ? res.data : []))
-      .catch((err) => console.error("Failed to load users:", err));
+    load().catch((err) => console.error("Failed to load users:", err));
   }, []);
+
+  const handleDelete = async (id) => {
+    const ok = window.confirm(`Bạn chắc chắn muốn xóa user #${id}?`);
+    if (!ok) return;
+    try {
+      await api.delete(`/admin/users/${id}`);
+      alert("Xóa user thành công!");
+      load();
+    } catch (err) {
+      console.error(err);
+      alert(err.response?.data?.message || "Xóa user thất bại");
+    }
+  };
 
   const roleOptions = useMemo(() => {
     const set = new Set(users.map(u => u.role_name));
@@ -59,7 +76,6 @@ export default function UsersManagement() {
     <div className="min-h-screen bg-gray-50 p-6">
       <h1 className="text-2xl font-bold text-green-700 mb-4">Quản lý người dùng</h1>
 
-      {/* Custom bar for users */}
       <div className="flex flex-col md:flex-row gap-3 mb-4">
         <select
           className="border p-2 rounded bg-white"
@@ -105,6 +121,7 @@ export default function UsersManagement() {
             <th className="p-3 text-left">Họ tên</th>
             <th className="p-3 text-left">Email</th>
             <th className="p-3 text-left">Vai trò</th>
+            <th className="p-3 text-center">Xóa tài khoản</th>
           </tr>
         </thead>
         <tbody>
@@ -114,6 +131,14 @@ export default function UsersManagement() {
               <td className="p-3">{u.full_name}</td>
               <td className="p-3">{u.email}</td>
               <td className="p-3">{u.role_name}</td>
+              <td className="p-3 text-center">
+                <button
+                  onClick={() => handleDelete(u.id)}
+                  className="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700"
+                >
+                  Xóa
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>

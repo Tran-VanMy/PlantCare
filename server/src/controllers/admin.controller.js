@@ -80,6 +80,33 @@ export const listUsers = async (req, res) => {
 };
 
 /**
+ * ✅ NEW: DELETE /api/admin/users/:id
+ * - Không cho admin tự xóa chính mình
+ * - Xóa user sẽ cascade plants/orders/... theo FK
+ */
+export const deleteUser = async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ message: "Invalid user id" });
+
+  try {
+    if (req.user.id === id) {
+      return res.status(400).json({ message: "Không thể tự xóa tài khoản admin đang đăng nhập." });
+    }
+
+    const check = await pool.query("SELECT id FROM users WHERE id=$1", [id]);
+    if (check.rowCount === 0) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    await pool.query("DELETE FROM users WHERE id=$1", [id]);
+    return res.json({ message: "User deleted" });
+  } catch (err) {
+    console.error("deleteUser error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+/**
  * GET /api/admin/services
  */
 export const listServices = async (req, res) => {
@@ -97,7 +124,7 @@ export const listServices = async (req, res) => {
 };
 
 /**
- * ✅ NEW: GET /api/admin/staff (req18 modal gán staff)
+ * GET /api/admin/staff
  */
 export const listStaff = async (req, res) => {
   try {
@@ -125,7 +152,6 @@ export const listStaff = async (req, res) => {
 
 /**
  * GET /api/admin/orders
- * ✅ trả đầy đủ info cho UI admin
  */
 export const listOrders = async (req, res) => {
   try {
@@ -179,8 +205,30 @@ export const listOrders = async (req, res) => {
 };
 
 /**
+ * ✅ NEW: DELETE /api/admin/orders/:id
+ * - Xóa order khỏi CSDL
+ * - Các bảng con ON DELETE CASCADE sẽ tự xóa theo
+ */
+export const deleteOrder = async (req, res) => {
+  const orderId = Number(req.params.id);
+  if (!orderId) return res.status(400).json({ message: "Invalid order id" });
+
+  try {
+    const check = await pool.query("SELECT id FROM orders WHERE id=$1", [orderId]);
+    if (check.rowCount === 0) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    await pool.query("DELETE FROM orders WHERE id=$1", [orderId]);
+    return res.json({ message: "Order deleted" });
+  } catch (err) {
+    console.error("deleteOrder error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+/**
  * PUT /api/admin/orders/:id
- * ✅ update cả status và status_vn để đồng bộ
  */
 export const updateOrderStatus = async (req, res) => {
   const orderId = req.params.id;

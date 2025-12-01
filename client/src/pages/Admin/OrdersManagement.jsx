@@ -1,3 +1,4 @@
+// client/src/pages/Admin/OrdersManagement.jsx
 import { useEffect, useMemo, useState } from "react";
 import api from "../../api/api";
 import Modal from "../../components/ui/Modal";
@@ -33,7 +34,6 @@ export default function OrdersManagement() {
   };
 
   const loadStaff = async () => {
-    // ✅ giả định server có endpoint này
     const res = await api.get("/admin/staff");
     setStaffList(Array.isArray(res.data) ? res.data : []);
   };
@@ -41,7 +41,6 @@ export default function OrdersManagement() {
   useEffect(() => {
     load().catch(console.error);
 
-    // ✅ auto refresh (req11,14,19)
     const interval = setInterval(() => load().catch(() => {}), 5000);
     return () => clearInterval(interval);
   }, []);
@@ -53,6 +52,19 @@ export default function OrdersManagement() {
     } catch (err) {
       console.error("Failed to update status:", err);
       alert("Update status failed");
+    }
+  };
+
+  const handleDeleteOrder = async (id) => {
+    const ok = window.confirm(`Xóa vĩnh viễn đơn #${id} khỏi CSDL?`);
+    if (!ok) return;
+    try {
+      await api.delete(`/admin/orders/${id}`);
+      alert("Xóa đơn thành công!");
+      load();
+    } catch (err) {
+      console.error(err);
+      alert(err.response?.data?.message || "Xóa đơn thất bại");
     }
   };
 
@@ -127,7 +139,6 @@ export default function OrdersManagement() {
   }, [orders, sortBy, search, statusFilter]);
 
   const canAssignByStatus = (statusEn) => {
-    // req12: action thay đổi theo status
     return statusEn === "pending" || statusEn === "confirmed";
   };
 
@@ -169,6 +180,7 @@ export default function OrdersManagement() {
             <th className="p-3">Trạng thái</th>
             <th className="p-3 text-center">Hành động</th>
             <th className="p-3 text-center">Chi tiết</th>
+            <th className="p-3 text-center">Xóa</th>
           </tr>
         </thead>
 
@@ -217,6 +229,15 @@ export default function OrdersManagement() {
                   Xem
                 </button>
               </td>
+
+              <td className="p-3 text-center">
+                <button
+                  onClick={() => handleDeleteOrder(o.id)}
+                  className="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700"
+                >
+                  Xóa
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>
@@ -244,7 +265,6 @@ export default function OrdersManagement() {
         )}
       </Modal>
 
-      {/* ✅ Assign staff modal (req18) */}
       <Modal
         isOpen={assignOpen}
         onClose={() => setAssignOpen(false)}
