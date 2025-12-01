@@ -1,8 +1,10 @@
 // client/src/pages/Admin/OrdersManagement.jsx
 import { useEffect, useMemo, useState } from "react";
 import api from "../../api/api";
+import ScrollToTopButton from "../../components/ui/ScrollToTopButton";
 import Modal from "../../components/ui/Modal";
 import SortSearchFilterBar from "../../components/common/SortSearchFilterBar";
+import { motion, AnimatePresence } from "framer-motion";
 
 const STATUS_OPTIONS = [
   { en: "pending", vn: "Chờ xác nhận" },
@@ -92,7 +94,7 @@ export default function OrdersManagement() {
   };
 
   const statusOptions = useMemo(() => {
-    const set = new Set(orders.map(o => o.status_vn || o.status));
+    const set = new Set(orders.map((o) => o.status_vn || o.status));
     return Array.from(set);
   }, [orders]);
 
@@ -100,39 +102,70 @@ export default function OrdersManagement() {
     let list = [...orders];
 
     if (statusFilter !== "all") {
-      list = list.filter(o => (o.status_vn || o.status || "").toLowerCase() === statusFilter.toLowerCase());
+      list = list.filter(
+        (o) =>
+          (o.status_vn || o.status || "").toLowerCase() ===
+          statusFilter.toLowerCase()
+      );
     }
 
     if (search.trim()) {
       const q = search.toLowerCase();
-      list = list.filter(o =>
-        String(o.id).includes(q) ||
-        (o.service_name || o.services || "").toLowerCase().includes(q) ||
-        (o.customer_name || "").toLowerCase().includes(q) ||
-        (o.address || "").toLowerCase().includes(q) ||
-        (o.phone || o.customer_phone || "").toLowerCase().includes(q)
+      list = list.filter(
+        (o) =>
+          String(o.id).includes(q) ||
+          (o.service_name || o.services || "").toLowerCase().includes(q) ||
+          (o.customer_name || "").toLowerCase().includes(q) ||
+          (o.address || "").toLowerCase().includes(q) ||
+          (o.phone || o.customer_phone || "").toLowerCase().includes(q)
       );
     }
 
-    const getDate = (o) => new Date(o.date || o.scheduled_date || 0).getTime();
+    const getDate = (o) =>
+      new Date(o.date || o.scheduled_date || 0).getTime();
     const getTotal = (o) => Number(o.total || o.total_price || 0);
-    const getService = (o) => (o.service_name || o.services || "").toLowerCase();
+    const getService = (o) =>
+      (o.service_name || o.services || "").toLowerCase();
     const getCustomer = (o) => (o.customer_name || "").toLowerCase();
 
     switch (sortBy) {
-      case "customer_asc": list.sort((a,b)=>getCustomer(a).localeCompare(getCustomer(b))); break;
-      case "customer_desc": list.sort((a,b)=>getCustomer(b).localeCompare(getCustomer(a))); break;
-      case "date_asc": list.sort((a,b)=>getDate(a)-getDate(b)); break;
-      case "date_desc": list.sort((a,b)=>getDate(b)-getDate(a)); break;
-      case "id_asc": list.sort((a,b)=>a.id-b.id); break;
-      case "id_desc": list.sort((a,b)=>b.id-a.id); break;
-      case "service_asc": list.sort((a,b)=>getService(a).localeCompare(getService(b))); break;
-      case "service_desc": list.sort((a,b)=>getService(b).localeCompare(getService(a))); break;
-      case "total_asc": list.sort((a,b)=>getTotal(a)-getTotal(b)); break;
-      case "total_desc": list.sort((a,b)=>getTotal(b)-getTotal(a)); break;
-      case "oldest": list.sort((a,b)=>getDate(a)-getDate(b)); break;
+      case "customer_asc":
+        list.sort((a, b) => getCustomer(a).localeCompare(getCustomer(b)));
+        break;
+      case "customer_desc":
+        list.sort((a, b) => getCustomer(b).localeCompare(getCustomer(a)));
+        break;
+      case "date_asc":
+        list.sort((a, b) => getDate(a) - getDate(b));
+        break;
+      case "date_desc":
+        list.sort((a, b) => getDate(b) - getDate(a));
+        break;
+      case "id_asc":
+        list.sort((a, b) => a.id - b.id);
+        break;
+      case "id_desc":
+        list.sort((a, b) => b.id - a.id);
+        break;
+      case "service_asc":
+        list.sort((a, b) => getService(a).localeCompare(getService(b)));
+        break;
+      case "service_desc":
+        list.sort((a, b) => getService(b).localeCompare(getService(a)));
+        break;
+      case "total_asc":
+        list.sort((a, b) => getTotal(a) - getTotal(b));
+        break;
+      case "total_desc":
+        list.sort((a, b) => getTotal(b) - getTotal(a));
+        break;
+      case "oldest":
+        list.sort((a, b) => getDate(a) - getDate(b));
+        break;
       case "newest":
-      default: list.sort((a,b)=>getDate(b)-getDate(a)); break;
+      default:
+        list.sort((a, b) => getDate(b) - getDate(a));
+        break;
     }
 
     return list;
@@ -145,158 +178,366 @@ export default function OrdersManagement() {
   const filteredStaff = useMemo(() => {
     if (!staffSearch.trim()) return staffList;
     const q = staffSearch.toLowerCase();
-    return staffList.filter(s =>
-      String(s.id).includes(q) ||
-      (s.full_name || s.name || "").toLowerCase().includes(q) ||
-      (s.phone || "").toLowerCase().includes(q)
+    return staffList.filter(
+      (s) =>
+        String(s.id).includes(q) ||
+        (s.full_name || s.name || "").toLowerCase().includes(q) ||
+        (s.phone || "").toLowerCase().includes(q)
     );
   }, [staffList, staffSearch]);
 
+  // ✅ yêu cầu 3: nếu > 10 đơn thì bật scroll
+  const enableScroll = filteredSortedOrders.length > 10;
+
+  // UI-only motion variants
+  const fadeUp = {
+    hidden: { opacity: 0, y: 12 },
+    show: {
+      opacity: 1,
+      y: 0,
+      transition: { duration: 0.5, ease: "easeOut" },
+    },
+  };
+  const stagger = {
+    hidden: {},
+    show: { transition: { staggerChildren: 0.06 } },
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <h1 className="text-2xl font-bold text-green-700 mb-4">Quản lý đơn hàng</h1>
+    <div className="min-h-screen bg-gradient-to-b from-white via-emerald-50/60 to-emerald-100/80 p-6">
+      <div className="max-w-7xl mx-auto space-y-5">
+        {/* Header */}
+        <motion.div
+          initial="hidden"
+          animate="show"
+          variants={stagger}
+          className="flex flex-wrap items-center justify-between gap-3"
+        >
+          <motion.h1
+            variants={fadeUp}
+            className="text-2xl md:text-3xl font-extrabold text-emerald-900 flex items-center gap-2"
+          >
+            <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-700 text-white shadow-md shadow-emerald-700/30">
+              🧾
+            </span>
+            Quản lý đơn hàng
+          </motion.h1>
 
-      <SortSearchFilterBar
-        sortValue={sortBy}
-        onSortChange={setSortBy}
-        searchValue={search}
-        onSearchChange={setSearch}
-        statusValue={statusFilter}
-        onStatusChange={setStatusFilter}
-        statusOptions={statusOptions}
-        searchPlaceholder="Tìm theo mã / dịch vụ / khách / địa chỉ / SĐT"
-      />
+          <motion.div
+            variants={fadeUp}
+            className="text-sm font-semibold text-emerald-900 bg-white/80 border border-emerald-200 rounded-full px-3 py-1 shadow-sm"
+          >
+            Hiển thị:{" "}
+            <span className="font-extrabold text-emerald-800">
+              {filteredSortedOrders.length}
+            </span>{" "}
+            / {orders.length} đơn
+          </motion.div>
+        </motion.div>
 
-      <table className="min-w-full bg-white rounded-lg shadow">
-        <thead>
-          <tr className="bg-green-100 text-left">
-            <th className="p-3">Mã đơn</th>
-            <th className="p-3">Khách hàng</th>
-            <th className="p-3">Dịch vụ</th>
-            <th className="p-3">Ngày hẹn</th>
-            <th className="p-3">Địa chỉ</th>
-            <th className="p-3">SĐT</th>
-            <th className="p-3">Tổng ($)</th>
-            <th className="p-3">Trạng thái</th>
-            <th className="p-3 text-center">Hành động</th>
-            <th className="p-3 text-center">Chi tiết</th>
-            <th className="p-3 text-center">Xóa</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {filteredSortedOrders.map((o) => (
-            <tr key={o.id} className="border-b hover:bg-green-50">
-              <td className="p-3">{o.id}</td>
-              <td className="p-3">{o.customer_name}</td>
-              <td className="p-3">{o.service_name}</td>
-              <td className="p-3">{new Date(o.date).toLocaleString()}</td>
-              <td className="p-3">{o.address}</td>
-              <td className="p-3">{o.phone || o.customer_phone || "—"}</td>
-              <td className="p-3">${Number(o.total).toFixed(2)}</td>
-              <td className="p-3 text-green-700">{o.status_vn}</td>
-
-              <td className="p-3 text-center space-x-2">
-                {canAssignByStatus(o.status) ? (
-                  <button
-                    onClick={() => openAssign(o.id)}
-                    className="bg-purple-600 text-white px-3 py-1 rounded"
-                  >
-                    Gán
-                  </button>
-                ) : (
-                  <span className="text-gray-400 text-sm">—</span>
-                )}
-
-                <select
-                  className="border p-1 rounded"
-                  value={o.status}
-                  onChange={(e) => updateStatus(o.id, e.target.value)}
-                >
-                  {STATUS_OPTIONS.map((s) => (
-                    <option key={s.en} value={s.en}>
-                      {s.vn}
-                    </option>
-                  ))}
-                </select>
-              </td>
-
-              <td className="p-3 text-center">
-                <button
-                  onClick={() => setSelected(o)}
-                  className="bg-blue-600 text-white px-3 py-1 rounded"
-                >
-                  Xem
-                </button>
-              </td>
-
-              <td className="p-3 text-center">
-                <button
-                  onClick={() => handleDeleteOrder(o.id)}
-                  className="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700"
-                >
-                  Xóa
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      <Modal
-        isOpen={!!selected}
-        onClose={() => setSelected(null)}
-        title={`Chi tiết đơn #${selected?.id}`}
-      >
-        {selected && (
-          <div className="space-y-2">
-            <p><strong>Mã đơn:</strong> {selected.id}</p>
-            <p><strong>Khách hàng:</strong> {selected.customer_name}</p>
-            <p><strong>Dịch vụ:</strong> {selected.service_name}</p>
-            <p><strong>Cây:</strong> {selected.plant_name}</p>
-            <p><strong>Ngày hẹn:</strong> {new Date(selected.date).toLocaleString()}</p>
-            <p><strong>Địa chỉ:</strong> {selected.address}</p>
-            <p><strong>SĐT:</strong> {selected.phone || "—"}</p>
-            <p><strong>Tổng tiền:</strong> ${Number(selected.total).toFixed(2)}</p>
-            <p><strong>Trạng thái:</strong> {selected.status_vn}</p>
-            <p><strong>Voucher:</strong> {selected.voucher_code || "—"}</p>
-            <p><strong>Ghi chú:</strong> {selected.note || "—"}</p>
-          </div>
-        )}
-      </Modal>
-
-      <Modal
-        isOpen={assignOpen}
-        onClose={() => setAssignOpen(false)}
-        title={`Gán nhân viên cho đơn #${assignOrderId}`}
-      >
-        <div className="space-y-3">
-          <input
-            className="border p-2 rounded w-full"
-            placeholder="Tìm staff theo ID / tên / SĐT"
-            value={staffSearch}
-            onChange={(e)=>setStaffSearch(e.target.value)}
+        {/* Sort / Search / Filter bar */}
+        <motion.div
+          initial="hidden"
+          animate="show"
+          variants={fadeUp}
+          className="bg-white rounded-2xl border border-emerald-100 shadow-lg p-3 md:p-4"
+        >
+          <SortSearchFilterBar
+            sortValue={sortBy}
+            onSortChange={setSortBy}
+            searchValue={search}
+            onSearchChange={setSearch}
+            statusValue={statusFilter}
+            onStatusChange={setStatusFilter}
+            statusOptions={statusOptions}
+            searchPlaceholder="Tìm theo mã / dịch vụ / khách / địa chỉ / SĐT"
           />
+        </motion.div>
 
-          <div className="max-h-80 overflow-auto space-y-2">
-            {filteredStaff.map(s => (
-              <div key={s.id} className="border rounded p-2 flex justify-between items-center">
-                <div>
-                  <div className="font-semibold">#{s.id} — {s.full_name || s.name}</div>
-                  <div className="text-sm text-gray-600">SĐT: {s.phone || "—"}</div>
-                </div>
-                <button
-                  onClick={() => chooseStaff(s.id)}
-                  className="px-3 py-1 bg-green-600 text-white rounded"
-                >
-                  Chọn
-                </button>
+        {/* Table container */}
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, ease: "easeOut" }}
+          className={`
+            bg-white rounded-2xl border border-emerald-100 shadow-xl
+            ${enableScroll ? "max-h-[560px] overflow-auto" : "overflow-hidden"}
+          `}
+        >
+          <table className="min-w-full">
+            <thead className="sticky top-0 z-10">
+              <tr className="bg-gradient-to-r from-emerald-700 via-green-600 to-lime-500 text-white text-left">
+                <th className="p-3 font-extrabold">Mã đơn</th>
+                <th className="p-3 font-extrabold">Khách hàng</th>
+                <th className="p-3 font-extrabold">Dịch vụ</th>
+                <th className="p-3 font-extrabold">Ngày hẹn</th>
+                <th className="p-3 font-extrabold">Địa chỉ</th>
+                <th className="p-3 font-extrabold">SĐT</th>
+                <th className="p-3 font-extrabold">Tổng ($)</th>
+                <th className="p-3 font-extrabold">Trạng thái</th>
+                <th className="p-3 font-extrabold text-center">Hành động</th>
+                <th className="p-3 font-extrabold text-center">Chi tiết</th>
+                <th className="p-3 font-extrabold text-center">Xóa</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              <AnimatePresence initial={false}>
+                {filteredSortedOrders.map((o) => (
+                  <motion.tr
+                    key={o.id}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 6 }}
+                    transition={{ duration: 0.22 }}
+                    className="border-b hover:bg-emerald-50/70 transition-colors"
+                  >
+                    <td className="p-3 font-bold text-emerald-900">#{o.id}</td>
+                    <td className="p-3">{o.customer_name}</td>
+                    <td className="p-3 font-semibold text-gray-900">
+                      {o.service_name}
+                    </td>
+                    <td className="p-3">{new Date(o.date).toLocaleString()}</td>
+                    <td className="p-3">{o.address}</td>
+                    <td className="p-3">{o.phone || o.customer_phone || "—"}</td>
+                    <td className="p-3 font-extrabold text-emerald-900">
+                      ${Number(o.total).toFixed(2)}
+                    </td>
+
+                    {/* ✅ Status pill FIX: text wrap nằm dưới text, không dưới icon */}
+                    <td className="p-3">
+                      <span
+                        className="
+                          inline-grid grid-cols-[auto,1fr] items-start gap-1.5
+                          px-2.5 py-1.5 rounded-xl text-xs font-extrabold
+                          bg-emerald-50 text-emerald-900 border border-emerald-100
+                          max-w-[160px] md:max-w-none
+                        "
+                      >
+                        <span className="leading-none mt-[1px]">✅</span>
+                        <span className="leading-snug break-words">
+                          {o.status_vn}
+                        </span>
+                      </span>
+                    </td>
+
+                    {/* ✅ Action cell FIX: flex-wrap + select co giãn */}
+                    <td className="p-3 text-center">
+                      <div className="flex flex-wrap items-center justify-center gap-2">
+                        {canAssignByStatus(o.status) ? (
+                          <button
+                            onClick={() => openAssign(o.id)}
+                            className="
+                              bg-purple-600 text-white px-3 py-1 rounded-lg font-semibold
+                              shadow hover:bg-purple-700 hover:shadow-md
+                              active:scale-95 transition
+                              whitespace-nowrap
+                            "
+                          >
+                            Gán
+                          </button>
+                        ) : (
+                          <span className="text-gray-400 text-sm px-2">—</span>
+                        )}
+
+                        <select
+                          className="
+                            border border-emerald-200 p-1.5 rounded-lg bg-white font-semibold
+                            hover:border-emerald-300 transition
+                            min-w-[120px] md:min-w-[140px]
+                          "
+                          value={o.status}
+                          onChange={(e) => updateStatus(o.id, e.target.value)}
+                        >
+                          {STATUS_OPTIONS.map((s) => (
+                            <option key={s.en} value={s.en}>
+                              {s.vn}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </td>
+
+                    <td className="p-3 text-center">
+                      <button
+                        onClick={() => setSelected(o)}
+                        className="
+                          bg-blue-600 text-white px-3 py-1 rounded-lg font-semibold
+                          shadow hover:bg-blue-700 hover:shadow-md
+                          active:scale-95 transition
+                        "
+                      >
+                        Xem
+                      </button>
+                    </td>
+
+                    <td className="p-3 text-center">
+                      <button
+                        onClick={() => handleDeleteOrder(o.id)}
+                        className="
+                          bg-red-600 text-white px-3 py-1 rounded-lg font-semibold
+                          shadow hover:bg-red-700 hover:shadow-md
+                          active:scale-95 transition
+                        "
+                      >
+                        Xóa
+                      </button>
+                    </td>
+                  </motion.tr>
+                ))}
+              </AnimatePresence>
+            </tbody>
+          </table>
+
+          {filteredSortedOrders.length === 0 && (
+            <div className="p-6 text-center text-gray-500 font-semibold">
+              Không có đơn phù hợp.
+            </div>
+          )}
+        </motion.div>
+
+        {/* Modal Chi tiết */}
+        <Modal
+          isOpen={!!selected}
+          onClose={() => setSelected(null)}
+          title={`Chi tiết đơn #${selected?.id}`}
+        >
+          {selected && (
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+              className="space-y-3"
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <InfoRow icon="🧾" label="Mã đơn" value={`#${selected.id}`} />
+                <InfoRow icon="👤" label="Khách hàng" value={selected.customer_name} />
+                <InfoRow icon="🌿" label="Dịch vụ" value={selected.service_name} />
+                <InfoRow icon="🪴" label="Cây" value={selected.plant_name} />
+                <InfoRow
+                  icon="📅"
+                  label="Ngày hẹn"
+                  value={new Date(selected.date).toLocaleString()}
+                />
+                <InfoRow icon="📍" label="Địa chỉ" value={selected.address} />
+                <InfoRow icon="📞" label="SĐT" value={selected.phone || "—"} />
+                <InfoRow
+                  icon="💵"
+                  label="Tổng tiền"
+                  value={`$${Number(selected.total).toFixed(2)}`}
+                  strong
+                />
               </div>
-            ))}
-            {filteredStaff.length === 0 && <p className="text-gray-500">Không có staff phù hợp.</p>}
+
+              <div className="pt-2 border-t border-emerald-100">
+                <InfoRow icon="✅" label="Trạng thái" value={selected.status_vn} pill />
+                <InfoRow icon="🎟️" label="Voucher" value={selected.voucher_code || "—"} />
+                <InfoRow icon="📝" label="Ghi chú" value={selected.note || "—"} />
+              </div>
+            </motion.div>
+          )}
+        </Modal>
+
+        {/* Modal Gán staff */}
+        <Modal
+          isOpen={assignOpen}
+          onClose={() => setAssignOpen(false)}
+          title={`Gán nhân viên cho đơn #${assignOrderId}`}
+        >
+          <div className="space-y-3">
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-lg">
+                🔎
+              </span>
+              <input
+                className="
+                  border border-emerald-200 p-2.5 pl-10 rounded-xl w-full
+                  font-semibold text-emerald-900 placeholder:text-gray-400
+                  focus:outline-none focus:ring-2 focus:ring-emerald-300
+                "
+                placeholder="Tìm staff theo ID / tên / SĐT"
+                value={staffSearch}
+                onChange={(e) => setStaffSearch(e.target.value)}
+              />
+            </div>
+
+            <div className="max-h-80 overflow-auto space-y-2 pr-1">
+              <AnimatePresence initial={false}>
+                {filteredStaff.map((s) => (
+                  <motion.div
+                    key={s.id}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 6 }}
+                    transition={{ duration: 0.2 }}
+                    className="
+                      border border-emerald-100 rounded-xl p-3
+                      flex justify-between items-center bg-white
+                      hover:bg-emerald-50/60 hover:shadow-md transition
+                    "
+                  >
+                    <div>
+                      <div className="font-extrabold text-emerald-900">
+                        #{s.id} — {s.full_name || s.name}
+                      </div>
+                      <div className="text-sm text-gray-600">
+                        📞 SĐT: {s.phone || "—"}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => chooseStaff(s.id)}
+                      className="
+                        px-3 py-1.5 bg-emerald-700 text-white rounded-lg font-semibold
+                        shadow hover:bg-emerald-800 hover:shadow-lg
+                        active:scale-95 transition
+                      "
+                    >
+                      Chọn
+                    </button>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+
+              {filteredStaff.length === 0 && (
+                <p className="text-gray-500 text-center py-4">
+                  Không có staff phù hợp.
+                </p>
+              )}
+            </div>
           </div>
+        </Modal>
+
+        <ScrollToTopButton />
+      </div>
+    </div>
+  );
+}
+
+/* UI-only helper component (không đổi logic) */
+function InfoRow({ icon, label, value, strong, pill }) {
+  return (
+    <div className="flex items-start gap-2 bg-emerald-50/50 border border-emerald-100 rounded-xl p-3">
+      <div className="text-xl leading-none">{icon}</div>
+      <div className="flex-1">
+        <div className="text-xs font-extrabold text-emerald-900 uppercase tracking-wide">
+          {label}
         </div>
-      </Modal>
+        {!pill ? (
+          <div
+            className={`text-sm ${
+              strong
+                ? "font-extrabold text-emerald-900"
+                : "font-semibold text-gray-800"
+            }`}
+          >
+            {value || "—"}
+          </div>
+        ) : (
+          <span className="inline-flex mt-1 items-center px-2.5 py-1 rounded-full text-xs font-extrabold bg-white text-emerald-900 border border-emerald-200">
+            {value || "—"}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
