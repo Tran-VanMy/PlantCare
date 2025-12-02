@@ -3,11 +3,17 @@ import { useEffect, useState, useMemo } from "react";
 import ScrollToTopButton from "../../components/ui/ScrollToTopButton";
 import api from "../../api/api";
 import Modal from "../../components/ui/Modal";
+import SortSearchFilterBar from "../../components/common/SortSearchFilterBar";
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function TaskHistory() {
   const [history, setHistory] = useState([]);
   const [selected, setSelected] = useState(null);
+
+  // ✅ NEW UI states: sort/search/filter giống TaskList
+  const [sortBy, setSortBy] = useState("newest");
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
 
   const load = async () => {
     const res = await api.get("/staff/tasks/history");
@@ -22,8 +28,91 @@ export default function TaskHistory() {
     return () => clearInterval(interval);
   }, []);
 
-  // ✅ yêu cầu 3: scroll khi > 10 đơn
-  const shouldScroll = history.length > 10;
+  // ✅ status options giống TaskList
+  const statusOptions = useMemo(() => {
+    const set = new Set(history.map((t) => t.status_vn || t.status));
+    return Array.from(set);
+  }, [history]);
+
+  // ✅ filtered + sorted giống TaskList
+  const filteredSorted = useMemo(() => {
+    let arr = [...history];
+
+    if (statusFilter !== "all") {
+      arr = arr.filter(
+        (t) =>
+          (t.status_vn || t.status || "").toLowerCase() ===
+          statusFilter.toLowerCase()
+      );
+    }
+
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      arr = arr.filter(
+        (t) =>
+          String(t.id).includes(q) ||
+          (t.services || t.service_name || "")
+            .toLowerCase()
+            .includes(q) ||
+          (t.customer_name || "").toLowerCase().includes(q) ||
+          (t.plant_name || "").toLowerCase().includes(q) ||
+          (t.address || "").toLowerCase().includes(q) ||
+          (t.phone || t.customer_phone || "").toLowerCase().includes(q)
+      );
+    }
+
+    const getDate = (t) =>
+      new Date(t.scheduled_date || t.date || t.created_at || 0).getTime();
+    const getTotal = (t) => Number(t.total_price || t.total || 0);
+    const getService = (t) =>
+      (t.services || t.service_name || "").toLowerCase();
+    const getCustomer = (t) => (t.customer_name || "").toLowerCase();
+
+    switch (sortBy) {
+      case "customer_asc":
+        arr.sort((a, b) => getCustomer(a).localeCompare(getCustomer(b)));
+        break;
+      case "customer_desc":
+        arr.sort((a, b) => getCustomer(b).localeCompare(getCustomer(a)));
+        break;
+      case "date_asc":
+        arr.sort((a, b) => getDate(a) - getDate(b));
+        break;
+      case "date_desc":
+        arr.sort((a, b) => getDate(b) - getDate(a));
+        break;
+      case "id_asc":
+        arr.sort((a, b) => a.id - b.id);
+        break;
+      case "id_desc":
+        arr.sort((a, b) => b.id - a.id);
+        break;
+      case "service_asc":
+        arr.sort((a, b) => getService(a).localeCompare(getService(b)));
+        break;
+      case "service_desc":
+        arr.sort((a, b) => getService(b).localeCompare(getService(a)));
+        break;
+      case "total_asc":
+        arr.sort((a, b) => getTotal(a) - getTotal(b));
+        break;
+      case "total_desc":
+        arr.sort((a, b) => getTotal(b) - getTotal(a));
+        break;
+      case "oldest":
+        arr.sort((a, b) => getDate(a) - getDate(b));
+        break;
+      case "newest":
+      default:
+        arr.sort((a, b) => getDate(b) - getDate(a));
+        break;
+    }
+
+    return arr;
+  }, [history, sortBy, search, statusFilter]);
+
+  // ✅ yêu cầu 3: scroll khi > 10 đơn (theo list đã lọc/sort)
+  const shouldScroll = filteredSorted.length > 10;
 
   // motion variants (UI only)
   const fadeUp = {
@@ -47,8 +136,6 @@ export default function TaskHistory() {
     mass: 0.6,
   };
 
-  const rows = useMemo(() => history, [history]);
-
   return (
     <div className="min-h-screen bg-gradient-to-b from-white via-emerald-50/50 to-emerald-100/70 p-6">
       {/* Header */}
@@ -56,7 +143,7 @@ export default function TaskHistory() {
         variants={stagger}
         initial="hidden"
         animate="show"
-        className="mb-5 flex items-center justify-between flex-wrap gap-3"
+        className="mb-4 flex items-center justify-between flex-wrap gap-3"
       >
         <motion.h1
           variants={fadeUp}
@@ -76,23 +163,47 @@ export default function TaskHistory() {
         </motion.div>
       </motion.div>
 
-      {rows.length === 0 ? (
+      {/* ✅ NEW: mô tả sort */}
+      <motion.div
+        variants={fadeUp}
+        initial="hidden"
+        animate="show"
+        className="mb-2 text-sm text-gray-700 font-medium"
+      >
+        Sắp xếp theo tên khách / ngày / mã / dịch vụ / tổng tiền / mới nhất / cũ nhất
+      </motion.div>
+
+      {/* ✅ NEW: sort/search/filter bar */}
+      <motion.div variants={fadeUp} initial="hidden" animate="show">
+        <SortSearchFilterBar
+          sortValue={sortBy}
+          onSortChange={setSortBy}
+          searchValue={search}
+          onSearchChange={setSearch}
+          statusValue={statusFilter}
+          onStatusChange={setStatusFilter}
+          statusOptions={statusOptions}
+          searchPlaceholder="Tìm theo mã / dịch vụ / khách / cây / địa chỉ / SĐT"
+        />
+      </motion.div>
+
+      {filteredSorted.length === 0 ? (
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-2xl border border-emerald-100 shadow-md p-8 text-center max-w-md"
+          className="mt-4 bg-white rounded-2xl border border-emerald-100 shadow-md p-8 text-center max-w-md"
         >
           <div className="text-5xl mb-3">🪴</div>
           <h2 className="text-xl font-extrabold text-emerald-900">
-            Chưa có lịch sử
+            Không có lịch sử phù hợp
           </h2>
           <p className="text-gray-700 mt-2 text-sm font-medium">
-            Khi bạn hoàn tất đơn, lịch sử sẽ hiển thị tại đây.
+            Hãy thử đổi bộ lọc hoặc từ khóa tìm kiếm.
           </p>
         </motion.div>
       ) : (
         <div
-          className={`bg-white rounded-2xl border border-emerald-100 shadow-lg overflow-hidden ${
+          className={`mt-3 bg-white rounded-2xl border border-emerald-100 shadow-lg overflow-hidden ${
             shouldScroll ? "max-h-[560px] overflow-auto" : ""
           }`}
         >
@@ -114,7 +225,7 @@ export default function TaskHistory() {
 
             <tbody>
               <AnimatePresence>
-                {rows.map((o, idx) => (
+                {filteredSorted.map((o) => (
                   <motion.tr
                     key={o.id}
                     variants={fadeUp}
@@ -123,12 +234,10 @@ export default function TaskHistory() {
                     exit={{ opacity: 0, y: 6 }}
                     whileHover={{ backgroundColor: "rgba(16,185,129,0.06)" }}
                     transition={fastHover}
-                    className={`border-b last:border-b-0 cursor-pointer`}
+                    className="border-b last:border-b-0 cursor-pointer"
                     onClick={() => setSelected(o)}
                   >
-                    <td className="p-3 font-semibold text-gray-900">
-                      #{o.id}
-                    </td>
+                    <td className="p-3 font-semibold text-gray-900">#{o.id}</td>
                     <td className="p-3 text-gray-800 font-medium">
                       {o.customer_name}
                     </td>

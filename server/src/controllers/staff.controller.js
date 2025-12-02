@@ -248,8 +248,6 @@ export const acceptOrder = async (req, res) => {
 
 /**
  * ✅ NEW: staff hủy đơn
- * - Nếu đơn chưa ai nhận (PENDING, chưa có assignment) => staff được hủy
- * - Nếu đơn đã assign => chỉ staff đang giữ assignment mới được hủy
  */
 export const cancelOrderByStaff = async (req, res) => {
   const orderId = Number(req.params.id);
@@ -272,14 +270,12 @@ export const cancelOrderByStaff = async (req, res) => {
     }
     const order = oRes.rows[0];
 
-    // kiểm tra assignment hiện tại (nếu có)
     const aRes = await client.query(
       "SELECT * FROM assignments WHERE order_id=$1 LIMIT 1",
       [orderId]
     );
     const assignment = aRes.rowCount ? aRes.rows[0] : null;
 
-    // nếu có assignment mà không phải của staff này => forbidden
     if (assignment && assignment.staff_id !== staffId) {
       await client.query("ROLLBACK");
       return res.status(403).json({
@@ -287,7 +283,6 @@ export const cancelOrderByStaff = async (req, res) => {
       });
     }
 
-    // chỉ cho hủy khi chưa hoàn tất
     if (order.status_vn === STATUS.DONE) {
       await client.query("ROLLBACK");
       return res.status(400).json({
@@ -295,13 +290,11 @@ export const cancelOrderByStaff = async (req, res) => {
       });
     }
 
-    // update trạng thái
     await client.query(
       "UPDATE orders SET status_vn=$1, status=$2, updated_at=NOW() WHERE id=$3",
       [STATUS.CANCELLED, "cancelled", orderId]
     );
 
-    // update assignment/task nếu có
     if (assignment) {
       await client.query(
         "UPDATE assignments SET status='cancelled' WHERE id=$1",
@@ -313,14 +306,12 @@ export const cancelOrderByStaff = async (req, res) => {
       );
     }
 
-    // history
     await client.query(
       `INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, note)
        VALUES ($1,$2,$3,$4,$5)`,
       [orderId, order.status_vn, STATUS.CANCELLED, staffUserId, "staff cancel"]
     );
 
-    // notify customer + admin
     await client.query(
       `INSERT INTO notifications (user_id, title, message, is_read, created_at)
        VALUES ($1,'Đơn bị hủy',$2,false,NOW())`,
@@ -504,17 +495,40 @@ export const taskHistory = async (req, res) => {
     if (!staffId)
       return res.status(404).json({ message: "Staff profile not found" });
 
+    // ✅ FIX: lấy đủ services, plant_name, note, voucher_code để modal hiển thị không bị trống
     const r = await pool.query(
-      `SELECT o.id, o.scheduled_date, o.address, o.phone, o.total_price, o.status_vn,
-              COALESCE(o.customer_name, u.full_name) as customer_name
-       FROM assignments a
-       JOIN orders o ON o.id=a.order_id
-       JOIN users u ON u.id=o.user_id
-       WHERE a.staff_id=$1 
-         AND (o.status_vn IN ($2,$3) OR o.status IN ('completed','cancelled'))
-       ORDER BY o.scheduled_date DESC`,
+      `
+      SELECT
+        o.id,
+        o.scheduled_date,
+        o.address,
+        o.phone,
+        o.total_price,
+        o.status_vn,
+        o.status,
+        o.note,
+        o.voucher_code,
+        COALESCE(o.customer_name, u.full_name) AS customer_name,
+        STRING_AGG(DISTINCT s.name, ', ') AS services,
+        p.name AS plant_name
+      FROM assignments a
+      JOIN orders o ON o.id=a.order_id
+      JOIN users u ON u.id=o.user_id
+      LEFT JOIN order_items oi ON oi.order_id=o.id
+      LEFT JOIN services s ON s.id=oi.service_id
+      LEFT JOIN order_plants op ON op.order_id=o.id
+      LEFT JOIN plants p ON p.id=op.plant_id
+      WHERE a.staff_id=$1 
+        AND (o.status_vn IN ($2,$3) OR o.status IN ('completed','cancelled'))
+      GROUP BY
+        o.id, o.scheduled_date, o.address, o.phone, o.total_price,
+        o.status_vn, o.status, o.note, o.voucher_code,
+        o.customer_name, u.full_name, p.name
+      ORDER BY o.scheduled_date DESC
+      `,
       [staffId, STATUS.DONE, STATUS.CANCELLED]
     );
+
     res.json(r.rows);
   } catch (err) {
     console.error("taskHistory", err);

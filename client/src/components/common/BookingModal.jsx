@@ -66,13 +66,13 @@ export default function BookingModal({
       .catch(() => setVouchers([]));
   }, [isOpen]);
 
+  // ✅ UI change: chỉ cho chọn 1 dịch vụ, qty luôn = 1
   const toggleService = (s) => {
     if (singleService) return;
-    const exists = selected.find((x) => x.id === s.id);
-    if (exists) setSelected(selected.filter((x) => x.id !== s.id));
-    else setSelected([...selected, { ...s, qty: 1 }]);
+    setSelected([{ ...s, qty: 1 }]); // luôn giữ 1 item duy nhất
   };
 
+  // giữ lại hàm để không ảnh hưởng logic cũ (UI không dùng nữa)
   const changeQty = (id, delta) => {
     setSelected((prev) =>
       prev.map((p) =>
@@ -124,7 +124,7 @@ export default function BookingModal({
     try {
       const payloadServices = selected.map((s) => ({
         service_id: s.id,
-        quantity: s.qty || 1,
+        quantity: 1, // ✅ ép luôn =1 (UI-only)
         price: s.price,
       }));
 
@@ -273,28 +273,36 @@ export default function BookingModal({
                     <AnimatePresence initial={false}>
                       {list.map((s) => {
                         const picked = selected.find((x) => x.id === s.id);
+
                         return (
-                          <motion.div
+                          <motion.button
+                            type="button"
                             key={s.id}
                             initial={{ opacity: 0, y: 6 }}
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0 }}
                             transition={{ duration: 0.2 }}
                             whileHover={{ y: -2 }}
+                            onClick={() => toggleService(s)}
                             className={`
+                              w-full text-left
                               flex items-center justify-between gap-3
                               border rounded-2xl p-3 bg-white
                               shadow-sm hover:shadow-md transition-all duration-200
-                              ${
-                                picked
-                                  ? "border-emerald-300 ring-1 ring-emerald-200"
-                                  : "border-emerald-100"
+                              ${picked
+                                ? "border-emerald-400 ring-2 ring-emerald-200 bg-emerald-50/60"
+                                : "border-emerald-100 hover:bg-emerald-50/40"
                               }
                             `}
                           >
                             <div className="min-w-0">
                               <div className="font-bold text-gray-900 flex items-center gap-2">
-                                <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-700 text-white text-sm">
+                                <span
+                                  className={`
+                                    inline-flex h-7 w-7 items-center justify-center rounded-lg text-sm
+                                    ${picked ? "bg-emerald-700 text-white" : "bg-emerald-100 text-emerald-900"}
+                                  `}
+                                >
                                   🧺
                                 </span>
                                 <span className="line-clamp-1">{s.name}</span>
@@ -312,45 +320,19 @@ export default function BookingModal({
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-2 shrink-0">
-                              {!singleService && (
-                                <input
-                                  type="checkbox"
-                                  checked={!!picked}
-                                  onChange={() => toggleService(s)}
-                                  className="h-4 w-4 accent-emerald-700 cursor-pointer"
-                                />
-                              )}
-
-                              {picked && (
-                                <div className="flex items-center gap-1 ml-1 bg-emerald-50 border border-emerald-100 rounded-xl px-1.5 py-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => changeQty(s.id, -1)}
-                                    className="
-                                      h-7 w-7 rounded-lg bg-white border border-emerald-100
-                                      hover:bg-emerald-100 active:scale-95 transition
-                                    "
-                                  >
-                                    −
-                                  </button>
-                                  <span className="min-w-[20px] text-center font-bold text-emerald-900">
-                                    {picked.qty}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => changeQty(s.id, +1)}
-                                    className="
-                                      h-7 w-7 rounded-lg bg-white border border-emerald-100
-                                      hover:bg-emerald-100 active:scale-95 transition
-                                    "
-                                  >
-                                    +
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          </motion.div>
+                            {/* ✅ Badge chọn */}
+                            {picked && (
+                              <div
+                                className="
+                                  shrink-0 px-2.5 py-1 rounded-full
+                                  text-xs font-extrabold
+                                  bg-emerald-700 text-white shadow-sm
+                                "
+                              >
+                                Đã chọn
+                              </div>
+                            )}
+                          </motion.button>
                         );
                       })}
                     </AnimatePresence>
@@ -358,10 +340,7 @@ export default function BookingModal({
                 </div>
 
                 {/* RIGHT: form */}
-                <form
-                  onSubmit={handleBook}
-                  className="space-y-3 flex flex-col"
-                >
+                <form onSubmit={handleBook} className="space-y-3 flex flex-col">
                   <h4 className="font-extrabold text-emerald-900 flex items-center gap-2">
                     👤 Thông tin khách hàng
                   </h4>
@@ -393,9 +372,7 @@ export default function BookingModal({
                   />
 
                   <div className="relative">
-                    <div className="absolute left-3 top-3 text-emerald-700">
-                      📝
-                    </div>
+                    <div className="absolute left-3 top-3 text-emerald-700">📝</div>
                     <textarea
                       name="note"
                       placeholder="Ghi chú (tuỳ chọn)"
@@ -438,7 +415,6 @@ export default function BookingModal({
                       value={form.plant_id}
                       onChange={handleChange}
                       onMouseDown={(e) => {
-                        // chặn dropdown mở nếu chưa có cây
                         if (plants.length === 0) {
                           e.preventDefault();
                           handleGoAddPlant();
@@ -521,9 +497,7 @@ export default function BookingModal({
                           Đang xử lý...
                         </>
                       ) : (
-                        <>
-                          ✅ Đặt lịch
-                        </>
+                        <>✅ Đặt lịch</>
                       )}
                     </button>
                   </div>
